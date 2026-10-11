@@ -1,0 +1,9 @@
+# 运行环境与依赖（实测版本）
+# Python 3.12.14，Windows + XeLaTeX(TeX Live 2023)
+numpy==2.5.3
+pandas==3.0.1
+scipy==1.18.1
+scikit-learn==1.9.1
+matplotlib==3.11.2
+threadpoolctl==3.7.0
+pillow==12.3.0

@@ -22,9 +22,9 @@ GMCM  全国研究生数学建模竞赛(华为杯)
 >
 >第四问使用 SPSS 进行处理, 仅保留结果, 具体操作见论文 `CM2503596.pdf`
 
-2025 华为杯 C 题
+2026 华为杯 F 题
 
-> 占位
+> 占位，等后期出结果
 
 ## How to use
 
@@ -32,4 +32,4 @@ GMCM  全国研究生数学建模竞赛(华为杯)
 git clone https://github.com/IceySwan/Math-Model.git
 ```
 
-或者去 [Release](https://github.com/IceySwan/Math-Model/releases) 页面下载对应压缩包. 
+或者去 [Release](https://github.com/IceySwan/Math-Model/releases) 页面下载对应压缩包.

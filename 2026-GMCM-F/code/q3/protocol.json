@@ -1,0 +1,23 @@
+{
+  "version": "q3-curved-v26-1",
+  "scope": "Q3 only; upstream Q2 curved response and all 200 joint draws; frozen power baseline comparison",
+  "nominal_budgets": [1e19, 1e22, 1e24],
+  "contexts": [2048, 4096, 8192, 32768, 131072],
+  "cost_models": ["exponential", "power", "logarithmic"],
+  "nominal_loss_gap_tolerance": 1e-7,
+  "scenario_optimum_tolerance": 2e-8,
+  "robust_true_regret_gap_tolerance": 1e-6,
+  "robust_contexts": [2048, 8192, 131072],
+  "robust_budgets": [1e19, 1e22],
+  "design_scenarios": "All 200 Q2 curved joint cell-bootstrap rows, with original draw IDs",
+  "independent_resampling_seed": 20260926,
+  "independent_resampling_draws": 200,
+  "independent_evaluation": "Generate new cell-bootstrap fits with the specified seed. Evaluate fixed nominal and robust decisions on these rows without tuning either decision. Report maximum, mean and top-10-percent mean regret. This is conditional Monte Carlo sensitivity from the same data, not independent real training data.",
+  "cost_sensitivity": "Re-solve separate common-cost scenarios at 0.5 and 2.0 cost multipliers; also evaluate each stored actual (N,D,Q) under changed costs, reporting infeasibility instead of silently recomputing D.",
+  "model_sensitivity": "Compare power and curved nominal configurations; evaluate both decisions under each model. Independent power resampling is a separate structural sensitivity, not mixed into a single statistical confidence interval.",
+  "global_bounds": "For Q in [a,b], use h(a) and g(log b) to form a lower loss for every N. Minimize the finite maximum over log N using opposing convex support lines. Branch until a feasible upper minus interval lower is within tolerance, including individual regret-baseline errors.",
+  "uncertainty": "Preserve whole joint parameter rows. Report support exceedance, boundary mass and broad configuration intervals.",
+  "near_optimal": "Representative quality-profile and fixed-quality N sublevel sets at absolute Loss tolerance 0.001; do not present their Cartesian product as a joint feasible region.",
+  "saturation": "Use gamma(Q)=(delta-2*kappa*log Q)/beta. Distinguish local Q=1 KKT candidates, globally checked transition brackets and conservative sufficient high-budget bounds.",
+  "integration": "Versioned Q3 handoff; no Q4 or manuscript modification in this stage."
+}

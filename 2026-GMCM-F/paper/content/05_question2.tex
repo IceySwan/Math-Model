@@ -1,0 +1,361 @@
+\section{问题二：质量修正的广义标度律}\label{sec:q2}
+
+第一问给出了两个性质不同的输出：$Q_0$ 是有限映射域上的条件质量代理，$\DeltaJ(\pvec)$ 是固定 Loss 标尺下的配比响应. 二者都不能直接解释为训练收益. 故第二问的任务是建立一个中间层，把参数量、Token、质量与配比整合到同一 Loss 模型中，并明确哪些系数来自真实轨迹、哪些来自半合成质量扰动. 
+
+\subsection{有效数据量与广义标度模型}
+
+令 $N$ 为模型参数量，$D$ 为训练 Token 数，\(Q\in(0,1]\) 为质量指数，\(\pvec=(p_1,\ldots,p_{17})\) 为 17 个训练领域的比例向量，满足
+\begin{equation}
+p_i\ge 0,\quad \sum_{i=1}^{17}p_i=1.
+\end{equation}
+传统标度律将验证交叉熵写为 \(\mathcal L=E+AN^{-\alpha}+BD^{-\beta}\)，可描述参数规模与数据规模的幂律关系\cite{kaplan,hoffmann,bahri}. 本文研究如何将第一问得到的质量与配比信息纳入该关系. 文献关于数据配比的研究表明，不同领域对验证损失的影响并不相同，且可能出现领域交互\cite{regmix,doremi}；因此本文把 $Q$ 与 \(\pvec\) 分别作为数据质量和数据构成的输入. 
+
+表~\ref{tab:data} 列出来源与用途: 附件 B 的主拟合数据为 B1 Pythia 训练日志，共 1176 行、8 个参数规模. B2 为 1029 行 Cerebras 半合成轨迹，B3 为 8 条各 500 点的 Pythia 插值轨迹，B4 为 57 个跨模型族收敛点，B5 为 44 个文献标度点. B6、B7、B8 为依据真实数据校准的半合成数据, 提供质量信号. B9 是模型元数据，B10 是大模型损失估算值, B11 含 18 条模型族元数据，B12 含 1386 条 Pythia 检查点索引，用于核对来源与检查点覆盖，不含验证损失，故不作为拟合观测. Pythia 公开套件覆盖 70M 至 12B 参数并发布训练检查点，B1 的观测范围与该训练体系相符. %\cite{pythia}. 
+
+\begin{table}[htbp]
+\centering\small
+\caption{附件 B 中与第二问相关的数据及其证据角色}
+\label{tab:data}
+\begin{tabular}{P{1.2cm}P{3.3cm}P{2.0cm}P{7.0cm}}
+\toprule
+编号 & 内容 & 数据性质 & 本文用途\\
+\midrule
+B1 & Pythia 训练日志，1176 行 & 真实轨迹 & 经典 $N$--$D$ 主拟合及分组验证\\
+B2 & Cerebras 轨迹，1029 行 & 半合成 & 跨族排序与损失标定检验\\
+B3 & 8 条 Pythia 插值轨迹 & 插值数据 & 轨迹插值一致性核验，不作独立观测\\
+B4、B5 & 跨族收敛点、文献数据 & 真实整理数据 & 跨族及文献排序检验\\
+B6、B7 & 360、450 个 $N$--$D$--$Q$ 点 & 半合成 & 质量响应估计与扩展质量等级检验\\
+B8 & 1704 个含外推点的 $N$--$D$--$Q$ 点 & 半合成 & 不同校准机制下的压力测试\\
+B9、B10 & 大模型元数据、估算损失 & 元数据、估算 & 讨论 100B--10000B 参数范围的外推边界\\
+B11、B12 & 模型族元数据、Pythia 检查点索引 & 辅助元数据 & 来源与检查点覆盖说明；不含损失观测，不参与拟合\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{第一问输出与识别边界}
+
+第一问已在质量评估中给出域级 \(\bar Q_b\)，并在 17 域配比实验上建立响应面. 可与配比域直接或近似对应的质量域只有 6 个. 第一问扩展数据给出的 \(\bar Q_b\) 见表~\ref{tab:qmap}. 其余 11 个配比域没有对应的质量观测，因此不对缺失域填入臆测质量值. 
+
+\begin{table}[H]
+\centering\small
+\caption{第一问质量评分与配比域的直接或近似映射}
+\label{tab:qmap}
+\begin{tabular}{lrrl}
+\toprule
+配比域 & \(\bar Q_b\) & 映射关系 & 质量数据\\
+\midrule
+arxiv & 0.8209 & 直接 & A2 扩展集\\
+github & 0.5041 & 直接 & A3 扩展集\\
+stackexchange & 0.6330 & 直接 & A1\\
+wikipedia\_en & 0.5718 & 近似 & A1 的 wikipedia\\
+gutenberg\_pg\_19 & 0.7011 & 近似 & A1 的 book\\
+pile\_cc & 0.6612 & 近似 & A1 的 commoncrawl\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+令 $\mathcal M$ 为表~\ref{tab:qmap} 的六个配比域，$\pi(a)$ 为配比域 $a$ 对应的质量域. 锚点已映射份额与文档等权条件均值定义为
+\begin{equation}\label{eq:q0-mapping-v9}
+m_0=\sum_{a\in\mathcal M}p_a^{(0)}=0.319361,\quad Q_0=\frac{\sum_{a\in\mathcal M}p_a^{(0)}\bar Q_{\pi(a)}}{m_0}=0.607474.
+\end{equation}
+这里 $m_0$ 是定义~\ref{def:background-mapped-quality} 中 $m_{\mathcal M}$ 在锚点 $\pvec^{(0)}$ 的取值. $Q_0$ 不是完整十七域配方的实测质量. 由命题~\ref{prop:background-quality-bound}，若其余 $68.06\%$ 份额的质量代理只限定在 $[0,1]$，则完整锚点质量在这些约束下的取值范围为
+\begin{equation}\label{eq:q2-full-quality-bound-v15}
+Q_{\mathrm{all}}^{(0)}\in[m_0Q_0,\,m_0Q_0+1-m_0]=[0.1940,0.8746].
+\end{equation}
+第三问采用 $Q_0$ 作质量处理起点时，额外假设这个六域条件均值可代表所处理语料的质量标尺. 式~\eqref{eq:q2-full-quality-bound-v15} 不能被误作其统计置信区间. 
+
+结合表~\ref{tab:pstar} 的候选配比和表~\ref{tab:effects} 的响应方向，第一问的平方根二次模型在历史 1M 候选表上得到目标 Spearman $\rho=0.9602$（固定 A5 标尺）、宏平均 RMSE $0.0378$，并选中第 239 行，记为 $\pvec^\star$. 在最接近训练配比均值的实际锚点 $\pvec^{(0)}$ 上，第一问输出有限差分与完整响应面探针值. 第二问仅使用第一问已经定义的质量基线、锚点和响应面差值. 预测值与局部探针均来自同一响应面，因此它们只提供同一模型下的两种解释，不能作为跨模型稳健性证据. 
+
+对 $\pvec^{(0)}$，六个已映射域的配比覆盖率为 $31.94\%$，其条件文档等权质量均值为 $0.6075$（按原文词数加权为 $0.6617$）；对 $\pvec^\star$，覆盖率为 $35.80\%$，条件均值为 $0.6638$（词数加权为 $0.6995$）. 这些只代表已映射份额. 对训练锚点 $\pvec^{(0)}$. 第二问因而把配比响应限定为锚点邻域的条件情景.
+
+\subsubsection{质量响应函数、有效数据状态与来源分层}
+
+\begin{definition}[质量响应与有效数据量]\label{def:q2-quality-response}
+令 $n:=N/10^9$、$d:=D/10^9$，来源 $s$ 的参数满足 $A_s,B_s,\alpha_s,\beta_s>0$. 设 $g_s$ 在包含 $[\ln0.1,0]$ 的开区间上连续可微，且 $g_s(0)=0$. 定义
+\begin{subequations}\label{eq:q2-generalized-v26}
+\begin{equation}
+    \mathcal G_s(Q):=\exp\{-g_s(\ln Q)/\beta_s\},\quad \psi(\pvec):=\DeltaJ(\pvec)
+\end{equation}
+\begin{equation}
+    d_{\mathrm{eff},s}:=d\mathcal G_s(Q)e^{-\lambda_{\mathrm{mix}}\psi(\pvec)},
+\end{equation}
+\begin{equation}
+    \mathcal L_s(n,d,Q,\pvec):=E_s+A_sn^{-\alpha_s}+B_sd^{-\beta_s} e^{g_s(\ln Q)+\beta_s\lambda_{\mathrm{mix}}\psi(\pvec)}.
+\end{equation}
+\end{subequations}
+
+由 $g_s(0)=0$，则在 $Q=1$ 且 $\pvec=\pvec^{(0)}$（或 $\lambda_{\mathrm{mix}}\psi(\pvec)=0$）时，式~\eqref{eq:q2-generalized-v26} 退化为经典 $N$--$D$ 标度律；任意新配方即使 $Q=1$，配比项通常仍存在. 
+质量的局部斜率与有效 Token 弹性分别为
+\begin{equation}\label{eq:q2-local-quality}
+a_s(Q):=-g_s'(\ln Q),\quad
+\gamma_s(Q):=\frac{a_s(Q)}{\beta_s}
+=\frac{\dd\ln\mathcal G_s(Q)}{\dd\ln Q}.
+\end{equation}
+当 $a_s\ge0$ 时，固定其余输入，提高 $Q$ 不增加模型 Loss. $\mathcal G_s$ 是给定来源标尺上的折算函数，并非由真实信息量直接观测得到. 
+\end{definition}
+\Needspace{21\baselineskip}
+\begin{theorem}[有效数据状态的有限等价及其局部切线]\label{thm:q2-log-marginal-v14}
+固定来源，设 $E\in\mathbb R$, $A,B,\alpha,\beta>0$, $\lambda_{\mathrm{mix}}\in\mathbb R$，且 $g\in C^1$. 令 $\mathcal Z:=\{\psi(\pvec):\pvec\in\Delta^{16}\}$. 对 $z\in\mathcal Z$ 定义 $d_{\rm eff}:=d\mathcal G(Q)e^{-\lambda_{\mathrm{mix}}z}$. 在同一 $n$ 下，两个可达状态 $(d_1,Q_1,z_1)$, $(d_2,Q_2,z_2)$ 的 Loss 相等，当且仅当
+\begin{equation}\label{eq:q2-finite-equivalence}
+\ln\frac{d_2}{d_1}
++\int_{Q_1}^{Q_2}\gamma(q)\,\frac{\dd q}{q}
+-\lambda_{\mathrm{mix}}(z_2-z_1)=0.
+\end{equation}
+在局部把 $z$ 延拓为实数坐标，记 $\mathcal L_N:=An^{-\alpha}$, $\mathcal L_D:=Bd_{\rm eff}^{-\beta}$，则
+\begin{equation}\label{eq:q2-log-differential}
+\dd\mathcal L=-\alpha\mathcal L_N\dd\ln n
+-\beta\mathcal L_D\{\dd\ln d+\gamma(Q)\dd\ln Q
+-\lambda_{\mathrm{mix}}\dd z\}.
+\end{equation}
+真实配比变动还必须满足单纯形可行方向，且 $\dd z=D\psi(\pvec)[\dd\pvec]$；独立 $z$ 坐标的切线不保证任意变化都可由配比实现. 
+\end{theorem}
+\begin{proof}
+因 $B>0,\beta>0$，映射 $v\mapsto Bv^{-\beta}$ 在 $v>0$ 上严格递减，故同一 $n$ 下 Loss 相等当且仅当有效数据量相等. 两状态取对数，并以 $\ln\mathcal G(Q_2)-\ln\mathcal G(Q_1)=\int_{Q_1}^{Q_2}\gamma(q)\dd q/q$ 代入，即得有限关系. 对 $An^{-\alpha}$ 和 $Bd_{\rm eff}^{-\beta}$ 分别使用链式法则，再用 $\dd\ln d_{\rm eff}=\dd\ln d+\gamma(Q)\dd\ln Q-\lambda_{\mathrm{mix}}\dd z$ 得全微分. 配比约束由背景中的可行方向定义给出. 
+\end{proof}
+固定参数量和配比时，式~\eqref{eq:q2-finite-equivalence} 给出有限质量提升的等效数据量；下文的形状约束与识别诊断决定该关系在哪些质量区间和来源内可以使用. 
+
+\textbf{总响应与机制的区别:}
+固定 $n,d,\pvec$ 时，式~\eqref{eq:q2-generalized-v26} 的质量方向导数为
+\begin{equation}\label{eq:v40-quality-derivative}
+\frac{\partial\mathcal L_s}{\partial Q}
+=-\frac{a_s(Q)}{Q}\,B_sd^{-\beta_s}
+e^{g_s(\ln Q)+\beta_s\lambda_{\mathrm{mix}}\psi(\pvec)}.
+\end{equation}
+故“质量提高使预测 Loss 非增”严格依赖拟合模型的 $a_s(Q)\ge0$ 形状约束. 这里的 $Q$ 汇总了若干文本信号，并未分别操纵或识别重复、噪声、有效信息密度等通道. 式~\eqref{eq:v40-quality-derivative} 是代理质量的总响应. 
+
+经典质量幂律对应 $g_s(u)=-\delta_su$，因而 $\gamma_s=\delta_s/\beta_s$ 为常数. 质量效应若随水平改变，直接使用一个固定指数就会把局部替代率错误地用于有限质量变化. 本文比较嵌套的两个模型：
+\begin{equation}\label{eq:q2-power-curved}
+\mathrm P:\ g(\ln Q)=-\delta\ln Q,\quad
+\mathrm C:\ g(\ln Q)=-\delta\ln Q+\kappa_Q(\ln Q)^2,\quad \ln Q\in[\ln0.1,0].
+\end{equation}
+以下无来源下标的曲率参数仅指 B6；B1 的真实 Pythia 轨迹仍独立拟合 $E+An^{-\alpha}+Bd^{-\beta}$. 
+
+\begin{proposition}[曲率响应的全区间形状约束]\label{prop:q2-shape}
+置 $u_{\min}:=\ln0.1$，用 $(\delta,\delta_{\min})$ 参数化曲率：
+\begin{equation}\label{eq:q2-shape}
+\delta_{\min}:=\delta-2\kappa_Q u_{\min},\quad
+\kappa_Q=\frac{\delta-\delta_{\min}}{2u_{\min}},\quad
+0\le\delta,\delta_{\min}\le5\beta.
+\end{equation}
+则所有 $Q\in[0.1,1]$ 均满足 $0\le a(Q)\le5\beta$，从而 $0\le\gamma(Q)\le5$，且 $\mathcal L$ 关于 $Q$ 非增. $\delta=\delta_{\min}$ 时模型 C 精确退化为模型 P. 
+\end{proposition}
+\begin{proof}
+$a(Q)=\delta-2\kappa_Q\ln Q$ 是 $\ln Q$ 的仿射函数，其两个端点值为 $\delta_{\min}$ 与 $\delta$. 区间内每个值都是端点值的凸组合，故继承上下界. 又 $\partial_Q\mathcal L=-a(Q)\mathcal L_D/Q$，其中 $\mathcal L_D>0$ 是数据项；最后由 $u_{\min}\ne0$ 得退化结论. 
+\end{proof}
+
+配比传递采用同一响应面上的精确差值. 若第一问的二次响应为 $\widehat J(\pvec)=b+\boldsymbol a^\top\boldsymbol\phi+\boldsymbol\phi^\top\mathbf B\boldsymbol\phi$，其中 $\mathbf B$ 对称，则
+\begin{equation}\label{eq:q2-exact-mixture}
+\psi(\pvec)=\boldsymbol a^\top(\boldsymbol\phi-\boldsymbol\phi_0)
++(\boldsymbol\phi-\boldsymbol\phi_0)^\top\mathbf B(\boldsymbol\phi+\boldsymbol\phi_0).
+\end{equation}
+直接展开两个二次式即可验证该恒等式, 把 $\widehat J(\pvec)$ 本身作为迁移项，会使锚点产生无依据的额外偏移. 
+
+\begin{proposition}[锚点数据不能识别配比传递系数]\label{prop:q2-lambda-unidentified-v15}
+若某来源的全部拟合观测均使用 $\pvec^{(0)}$，则该来源的 Loss 观测不能识别 $\lambda_{\mathrm{mix}}$. 
+\end{proposition}
+\begin{proof}
+锚点满足 $\psi(\pvec^{(0)})=0$，故式~\eqref{eq:q2-generalized-v26} 的预测与 $\lambda_{\mathrm{mix}}$ 无关，关于该系数的设计方向恒为零. 任意两个系数值给出同一观测分布；这与背景中可识别性的定义不相容. 
+\end{proof}
+因此第三问主结果固定 $\pvec=\pvec^{(0)}$, 其他配比只给定 $\lambda_{\mathrm{mix}}$ 作条件情景. 质量代理与 B6 等级共用标尺、配比效应可以迁移，均是额外假设. 
+
+\subsubsection{共同质量响应的秩结构与可检验性}
+
+式~\eqref{eq:q2-generalized-v26} 不仅规定一条质量曲线，还要求不同资源单元共享其形状. 完整的资源单元与质量等级交叉设计使这一假设可以脱离资源基线单独检查. 
+
+\begin{proposition}[中心化质量响应的秩一必要条件]\label{prop:q2-rank-one-v37}
+固定来源和配比，令 $B_p:=B\exp\{\beta\lambda_{\rm mix}\psi\}$. 对 $R$ 个完整资源单元 $(n_r,d_r)$ 和 $m$ 个共同质量等级 $Q_j$，设模型均值矩阵为 $\mathbf M=(M_{rj})$. 若满足共同质量响应模型，则
+\begin{equation}\label{eq:q2-rank-one-v37}
+\mathbf M\mathbf P_m=\boldsymbol b\boldsymbol f^\top\mathbf P_m,
+\quad \operatorname{rank}(\mathbf M\mathbf P_m)\le1,
+\quad \mathbf P_m:=\mathbf I_m-\frac1m\one\one^\top,
+\end{equation}
+其中 $b_r=B_pd_r^{-\beta}$, $f_j=e^{g(\ln Q_j)}$. 
+\end{proposition}
+\begin{proof}
+令 $a_r=E+An_r^{-\alpha}$，则 $\mathbf M=\boldsymbol a\one^\top+\boldsymbol b\boldsymbol f^\top$. 右乘 $\mathbf P_m$ 后第一项为零，第二项为两个向量的外积，因此秩至多为一. 
+\end{proof}
+
+对观测矩阵 $\mathbf Y$ 的中心化 $\mathbf Y\mathbf P_m$ 作奇异值分解，以 $s_1\ge s_2\ge\cdots$ 记奇异值，表~\ref{tab:q2-rank-diagnostic-v37} 给出结构诊断. 第一方向的能量占比为 $s_1^2/\sum_js_j^2$，残差 RMSE 按全部 $Rm$ 个中心化元素计算. 
+\begin{table}[htbp]\centering\small
+\caption{B7 与 B6 共享基础记录表}\label{tab:q2-rank-diagnostic-v37}
+\begin{tabular}{lrrrr}\toprule
+数据 & 完整布局 & 第一方向能量 & $s_2/s_1$ & 秩一残差 RMSE\\\midrule
+B6 & $45\times8$ & $88.18\%$ & 0.1947 & 0.04388\\
+B7 扩展表 & $45\times10$ & $87.07\%$ & 0.2065 & 0.04190\\\bottomrule
+\end{tabular}\end{table}
+%这些是观测变化的描述量，不是原始 Loss 的预测 $R^2$，也不是模型拒绝检验. 噪声、同一资源单元内的相关性和数值舍入都可产生非零高阶奇异值；在没有独立重复测量时，噪声与结构偏离不能完全分离. B7 也不构成独立验证. 即使秩一成立，仍须另查行载荷是否服从 $d_r^{-\beta}$，以及共同质量曲线的单调性. 
+
+共同形状若获得数据支持，其具体函数不必局限于二次式. 例如在 $u=\ln Q$ 上取非负基函数 $M_j$，记
+\begin{equation}\label{eq:q2-monotone-basis-v37}
+v(u)=\sum_{j=1}^Ja_jM_j(u),\quad a_j\ge0,
+\quad g(u)=\int_u^0v(s)\,\dd s,
+\end{equation}
+就有 $g(0)=0$, $g'(u)=-v(u)\le0$. 非负积分样条是成熟的单调回归构造\cite{ramsay_monotone}. 本文正式参数仍来自式~\eqref{eq:q2-power-curved} 的嵌套比较, 式~\eqref{eq:q2-monotone-basis-v37} 只说明后续理论可容纳的形状扩展. B6 仅有八个质量等级，新增自由度必须通过原有分组外验证；若转而引入质量与资源的交互项，则需重新检查第三问的可分离结构. 
+
+\subsection{有限替代的扩展与坐标一致性}
+
+当参数量和配比固定时，保持 Loss 不变所需的数据量变化为
+\begin{equation}\label{eq:q2-data-substitution}
+\frac{d_2}{d_1}=
+\exp\!\left[-\int_{Q_1}^{Q_2}\gamma(q)\frac{\dd q}{q}\right]
+=\exp\!\left[\frac{g(\ln Q_2)-g(\ln Q_1)}{\beta}\right].
+\end{equation}
+常数情形可简化为 $(Q_1/Q_2)^\gamma$. 局部有 $\dd\ln d=-\gamma(Q)\dd\ln Q$；同时改变参数量还需由式~\eqref{eq:q2-log-differential} 按当前 $\mathcal L_N,\mathcal L_D$ 加权，不能把 $\alpha,\beta,\gamma$ 当作脱离状态的全局重要性排序. 
+
+\begin{proposition}[有限质量提升的等效参数规模]\label{prop:q2-finite-substitution-v15}
+固定 $d>0$, 配比坐标 $z$ 和初始 $n_0>0$，比较质量 $Q_a$, $Q_b$. 令
+\[
+H:=n_0^{-\alpha}+\frac BA d^{-\beta}e^{\beta\lambda_{\mathrm{mix}}z}
+\{e^{g(\ln Q_b)}-e^{g(\ln Q_a)}\}.
+\]
+若 $H>0$，则在旧质量 $Q_a$ 下与 $(n_0,d,Q_b,z)$ 等 Loss 的唯一有限参数规模为 $n_{\rm eq}=H^{-1/\alpha}$. 若 $H\le0$，不存在这样的有限正参数规模；$H=0$ 仅能由 $n\to\infty$ 达到极限. 
+\end{proposition}
+\begin{proof}
+把 $\mathcal L(n_{\rm eq},d,Q_a,z)=\mathcal L(n_0,d,Q_b,z)$ 两边公共项消去，得到 $n_{\rm eq}^{-\alpha}=H$. 左侧严格递减地把 $(0,\infty)$ 映到 $(0,\infty)$，故存在性、唯一性与边界结论成立. 
+\end{proof}
+
+\begin{proposition}[质量坐标变换与有限响应不变性]\label{prop:q2-quality-coordinate-v37}
+设 $z=\varphi(Q)>0$ 严格递增, 连续可微，$\varphi'(Q)>0$ 且 $\varphi(1)=1$. 同时变换响应函数及后续质量成本：
+\[
+\widetilde g(\ln z)=g(\ln\varphi^{-1}(z)),\quad
+\widetilde h(z)=h(\varphi^{-1}(z)).
+\]
+则对应状态的 Loss、成本和最优资源决策不变，而局部质量弹性满足
+\begin{equation}\label{eq:q2-coordinate-elasticity-v37}
+\widetilde\gamma(z)=\gamma(Q)\frac{z}{Q\varphi'(Q)}.
+\end{equation}
+对应质量端点之间的 $g$ 差与有效数据倍率保持不变. 
+\end{proposition}
+\begin{proof}
+单调坐标变换为可行质量区间之间的双射，代入模型和成本即得同一目标与可行资源集. 又由链式法则，
+\[
+\frac{\dd\widetilde g}{\dd\ln z}
+=g'(\ln Q)\frac{\dd\ln Q}{\dd\ln z}
+=g'(\ln Q)\frac{z}{Q\varphi'(Q)},
+\]
+除以 $-\beta$ 得弹性公式. 端点函数值未变，有限响应差及其指数倍率也未变. 
+\end{proof}
+因此，质量弹性的数值依赖所用坐标，有限替代关系则在一致变换下保持不变. %第一问文本质量代理与 B6 质量等级共用标尺仍需重叠锚点或额外校准；式~\eqref{eq:q1-general-identification-v37} 的识别范围不能未经该接口直接作为 B6 的质量区间. 
+
+\subsection{秩一必要条件与参数不确定性}
+
+\subsubsection{变量投影与嵌套选型}
+记非线性参数 $\boldsymbol\eta=(\alpha,\beta,\delta,\delta_{\min})$，并把常指数模型视作 $\delta_{\min}=\delta$ 的受限情形. 固定 $\boldsymbol\eta$ 后，设计矩阵的第 $i$ 行为
+\[
+\mathbf x_i(\boldsymbol\eta)=
+\bigl(1,n_i^{-\alpha},d_i^{-\beta}e^{g(\ln Q_i)}\bigr),
+\quad \boldsymbol b=(E,A,B)^\top.
+\]
+拟合问题写成
+\begin{equation}\label{eq:q2-variable-projection}
+F(\boldsymbol\eta):=\min_{\boldsymbol b\in\mathcal B}
+\|\mathbf W^{1/2}\{\boldsymbol y-\mathbf X(\boldsymbol\eta)\boldsymbol b\}\|_2^2,
+\quad \min_{\boldsymbol\eta\in\mathcal H}F(\boldsymbol\eta),
+\end{equation}
+其中 $\mathcal B=[0,10]\times[10^{-8},100]^2$，非线性参数满足 $\alpha,\beta\in[0.005,1.5]$ 及式~\eqref{eq:q2-shape}，故端点斜率不超过 $7.5$. 普通拟合 $\mathbf W=\mathbf I$；整单元重抽样时其对角元为重复次数，零次数行删除，等价于重复观测. 数值估计采用变量投影：固定非线性参数后求解带界线性最小二乘，再在约束集合 $\mathcal H$ 上最小化剖面目标 $F(\boldsymbol\eta)$. 
+
+\textbf{拟合性质：变量投影的局部导数：}
+若 $\mathbf X$ 光滑，某邻域内线性子问题具有唯一解 $\boldsymbol b^*(\boldsymbol\eta)$，自由列满秩且活动边界固定，则剖面目标可微，并满足
+\begin{equation}\label{eq:q2-projection-gradient}
+\partial_{\eta_j}F=-2\boldsymbol r^\top\mathbf W
+(\partial_{\eta_j}\mathbf X)\boldsymbol b^*,
+\quad\boldsymbol r:=\boldsymbol y-\mathbf X\boldsymbol b^*.
+\end{equation}
+该公式仅用于优化器的局部导数计算；其成立依赖活动边界固定，活动集改变时需重新处理带界线性子问题. 
+
+B6 的 360 行由 45 个完整 $(N,D)$ 单元与 8 个质量等级组成. 主检验分别整组留出一个质量等级和一个完整 $(N,D)$ 单元；另作留一 $N$ 与留一 $D$ 检验. 每个外层训练集内，再作质量等级留一和确定性五折完整单元检验. 仅当曲率模型在两项内层 RMSE 均降低至少 $1\%$、且赢过半数分组，才选曲率形式. B7 新增的两个质量等级共 90 行只作选型后的来源内检验；B8 不参与参数拟合或选择. 
+
+\begin{table}[htbp]\centering\small
+\caption{第二问两种质量模型的同口径分组验证}\label{tab:q2-v26-validation}
+\begin{tabular}{lrrr}\toprule
+验证口径 & 常指数 P 的 RMSE & 曲率 C 的 RMSE & 相对下降\\\midrule
+B6 留一质量等级 & 0.0898402 & 0.0673465 & 25.04\%\\
+B6 留一完整 $(N,D)$ 单元 & 0.0741682 & 0.0650484 & 12.30\%\\
+B6 留一模型规模 & 0.0747492 & 0.0659274 & 11.80\%\\
+B6 留一数据规模 & 0.0879606 & 0.0800434 & 9.00\%\\
+B7 新质量等级 & 0.0580216 & 0.0508392 & 12.38\%\\\bottomrule
+\end{tabular}
+\end{table}
+%表~\ref{tab:q2-v26-validation} 汇总同口径比较；图示见附录~\ref{app:v39-algorithms} 的图~\ref{fig:q2-v26-validation}. 质量等级的 8 个外层折和完整单元的 45 个外层折均选择曲率模型. 对外层分组误差进行描述性整组重抽样，RMSE 相对下降的 $2.5\%/50\%/97.5\%$ 分位分别为：质量留出 $8.39\%/24.60\%/38.67\%$，完整单元留出 $9.47\%/12.29\%/14.94\%$. 交叉验证训练折彼此重叠，这些分位不是独立重复实验的推断区间. 
+
+
+\subsubsection{单调积分斜率的备选模型与增量验证}\label{sec:q2-shape-v38}
+曲率函数把质量斜率限制为 $\ln Q$ 的仿射函数. 为检查这一参数化是否限制 B6 来源内的预测，在不改变式~\eqref{eq:unified-chain-v9} 及原模型选择结果的条件下，令 $u=\ln Q$，在 $[\ln0.1,0]$ 上取等距结点 $u_0<\cdots<u_4=0$，并设
+\begin{equation}\label{eq:q2-integrated-slope-v38}
+g_{\rm I}(u)=\sum_{j=0}^{3}s_j
+\bigl[u_{j+1}-\max\{u,u_j\}\bigr]_+,
+\quad 0\le s_j\le5\beta.
+\end{equation}
+这里 $[v]_+=\max(v,0)$. 在第 $j$ 个结点区间内部，$-g_{\rm I}'(u)=s_j$，从而有效数据弹性为 $\gamma_{\rm I}(Q)=s_j/\beta\in[0,5]$；结点处允许斜率跳变，而 $g_{\rm I}(0)=0$ 固定了质量 $1$ 的参照值. 对应 Loss 仍为 $E+An^{-\alpha}+Bd^{-\beta}\exp\{g_{\rm I}(\ln Q)\}$. 
+
+\begin{proposition}[积分斜率质量响应的形状保证]\label{prop:q2-integrated-shape-v38}
+若 $A,B,\alpha,\beta>0$ 且式~\eqref{eq:q2-integrated-slope-v38} 的斜率约束成立，则 $Q\mapsto g_{\rm I}(\ln Q)$ 在 $[0.1,1]$ 上连续、非增，Loss 关于质量非增；在每个开结点区间，其有效数据弹性为常数 $s_j/\beta\in[0,5]$. 若该区间的 $s_j>0$，质量提高使数据项严格下降. 
+\end{proposition}
+\begin{proof}
+每一项 $[u_{j+1}-\max\{u,u_j\}]_+$ 连续且随 $u$ 非增，在 $(u_j,u_{j+1})$ 上的导数为 $-1$，其余开结点区间导数为零. 求和后得 $g_{\rm I}'=-s_j$；对 $Bd^{-\beta}e^{g_{\rm I}}$ 应用链式法则即得 Loss 的方向与严格性. 
+\end{proof}
+
+固定非线性参数 $\alpha,\beta,s_0,\ldots,s_3$ 后，对 $E,A,B$ 求带界最小二乘, 外层在 $\alpha,\beta\in[0.005,1.5]$, $0\le s_j\le5\beta$ 下作三起点约束优化. 五折验证按完整 $(N,D)$ 资源单元分组，每折只用 36 个训练单元重新拟合曲率模型与积分斜率模型，再评价 9 个留出单元的 72 行. 这个五折比较与表~\ref{tab:q2-v26-validation} 的逐单元留一设计不同，两组 RMSE 不横向拼接. 
+
+同一 B6 完整资源单元五折比较中，曲率与积分斜率模型的合并 RMSE 分别为 $0.06669707$ 与 $0.06589885$；后者虽有微小优势，成对重抽样差值区间仍跨零. 因此积分斜率只是待检验的形状候选，不替换式~\eqref{eq:q2-v26-parameters} 的全 B6 主拟合或第三问参数. 完整表与逐折图见附录~\ref{app:v39-algorithms} 的表~\ref{tab:q2-integrated-cv-v38}、图~\ref{fig:q2-integrated-cv-v38}. B6 属半合成资料，B7 与其共享基础记录. 
+
+
+\textbf{理论条件的程序检查：}
+B6/B7 的中心化质量响应矩阵的第一奇异值能量占比分别为 $88.18\%$ 和 $87.07\%$，故共同质量响应的秩一必要条件是近似而非精确满足. 对 $z=Q^2$ 的一致坐标变换，101 个网格点的质量响应差在当前浮点计算中为零，且弹性按命题~\ref{prop:q2-quality-coordinate-v37} 更新；这些结构检查不证明两个来源共享质量机制. 
+
+\subsubsection{参数、质量替代率与来源边界}
+第一阶段用 B1 的 1176 条真实 Pythia 轨迹拟合经典 $N$--$D$ 分支，再将其冻结用于不同附件检验. 表~\ref{tab:q2-v39-external} 同时报绝对误差与排序相关：B2 的高 RMSE 与尚可的排序相关说明跨族 Loss 截距和量尺不可直接搬用；B3 是同源插值，不是 4000 次新增训练；B4、B5 的仅 $N$ 对照仍能得到高排序相关，故这两组结果支持粗排序，却不足以单独识别 Token 指数或质量斜率. 
+\input{tables/q2_validation.tex}
+B9 的 132 条参数元数据覆盖 $N=100$--$10000$B，整体远离 B1 的 $0.07$--$11.97$B 观测规模；B10 的 128 条 Loss 为估算值. 表中 B10 的小误差只反映同一估算口径的数值对照，不是独立的大模型训练验证. 质量响应仍主要由 B6 的半合成 $N,D,Q$ 交叉表估计；B8 迁移检验出现反向排序，提醒跨生成机制外推的局限. 
+全 B6 拟合为
+\begin{align}\label{eq:q2-v26-parameters}
+(E,A,B)&=(0.860047,\ 0.540173,\ 1.593498),\\
+(\alpha,\beta,\delta)&=(0.279054,\ 0.095607,\ 0.229965),\\
+(\delta_{\min},\kappa_Q)&=(0,\ -0.049936).
+\end{align}
+式~\eqref{eq:q2-v26-parameters} 是本文在 B6 上估计的曲率模型参数，第二、三问的全部质量相关结论均以其为输入；它与式~\eqref{eq:q2-power-curved} 的常指数模型 $\mathrm P$ 是同一半合成表上的两个并列拟合，后者给出 $\beta=0.069902$, $\gamma_Q=1.21646$. 两套参数的可比差异正是命题~\ref{prop:q2-shape} 所刻画的曲率项：常指数模型把质量弹性固定为常数，曲率模型允许其随 $Q$ 变化. 表~\ref{tab:q2-v26-validation} 给出两者的分组验证对照，第三问的模型形式敏感性则报告常指数设定下的全部结果.
+
+计算使用完整精度. 此时 $\gamma(0.1)=0$, $\gamma(1)=2.40532$，且在质量锚点 $Q_0=0.6074742$ 处有 $\gamma(Q_0)=1.88464$. 最低质量端的零斜率来自活动约束；200 次完整 $(N,D)$ 单元联合抽样中，$\delta_{\min}$ 恰为 $0$ 的有 $128$ 次（$64\%$），绝对值不超过 $10^{-15}$（即浮点精度）的有 $196$ 次（$98\%$），最大值为 $4.8\times10^{-3}$. 因此它只支持当前受限模型在低质量端的形状，不能证明真实训练系统在 $Q=0.1$ 精确饱和. 
+
+图~\ref{fig:q2-v26-quality} 的横轴为质量 $Q\in[0.1,1]$（对数刻度），纵轴为质量响应因子 $F(Q)=e^{g(\ln Q)}$. 固定参数规模、数据量和配比时，$F(Q)$ 等于质量为 $Q$ 与质量为 $1$ 时的数据损失项之比；例如 $F(Q)=1.2$ 表示前者的数据损失项高出 $20\%$. 蓝线为常指数模型，橙线为单调曲率模型，全 B6 拟合的两条响应曲线分别为
+\[
+F_{\mathrm P}(Q)\approx Q^{-0.085033},\quad
+F_{\mathrm C}(Q)\approx\exp\!\left[-0.229965\ln Q-0.049936(\ln Q)^2\right].
+\]
+本文以完整 $(N,D)$ 资源单元为单位重抽样 $200$ 次，每次保留所抽单元内全部质量等级并重新拟合两种模型. 在每个固定 $Q$ 处，分别计算 $200$ 次拟合所得 $F(Q)$ 的 $2.5\%$ 与 $97.5\%$ 分位数，连接这些上下边界得到浅蓝、浅橙色带. 因此，实线表示完整数据的拟合结果，色带表示各质量水平下由参数估计波动形成的逐点 $95\%$ 分位范围. 所有拟合均满足 $F(1)=1$，故两条曲线及其色带在 $Q=1$ 处汇聚于 $1$. 
+
+同一联合重抽样还给出曲率模型 $\gamma(Q_0)$ 的 $95\%$ 分位范围 $[1.71497,2.06961]$. 词数加权锚点下点值为 $1.97391$，范围为 $[1.79621,2.16765]$. 这些替代率范围由每次拟合的完整参数向量计算，保留式~\eqref{eq:q2-local-quality} 中 $\beta,\delta,\kappa_Q$ 的联合变化. 
+\begin{figure}[H]\centering
+\includegraphics[width=0.93\linewidth]{q2_v26_quality_response_with_joint_band.pdf}
+\caption{常指数与单调曲率模型的质量响应及重抽样区间}\label{fig:q2-v26-quality}
+\end{figure}
+图~\ref{fig:q2-v26-quality} 比较常指数模型与单调曲率模型的质量响应因子. 蓝色与橙色实线分别表示基于完整 B6 数据的拟合结果. 对应浅色带由 200 次完整 $(N,D)$ 单元重抽样并重新拟合得到, 表示各 $Q$ 位置上的 $2.5\%$--$97.5\%$ 分位范围. 纵轴以 $Q=1$ 时的数据损失项为基准进行归一化, 因而两条响应曲线及其重抽样区间均在 $Q=1$ 处汇聚于 $1$.
+
+在 $n=1,d=150,Q_0=0.6074742,\psi=0$ 下，将质量提高 $0.1$，常指数模型预测 Loss 降低 $0.0197105$、等效规模为 $1.14249$B；曲率模型分别为 $0.0308417$ 与 $1.23452$B. 两者均按命题~\ref{prop:q2-finite-substitution-v15} 在各自模型内计算；差异反映质量响应形式变化，不能把两组预测差解释为已经观测到的训练收益. 
+
+图~\ref{fig:q2-v26-profiles} 给出参数剖面. 列归一化 Jacobian 条件数由常指数模型的约 $345$ 降至曲率模型的约 $196$，但参数仍有明显相关性. 单个 $(N,D)$ 单元的最大训练 SSE 份额为 $6.39\%$，前 $10\%$ 单元合计为 $26.87\%$，未触发预设稳健损失候选条件. 两处全 B6 拟合所得剖面极小值在不同初值下的目标差均小于 $3.0\times10^{-14}$；该结果表明数值解稳定，但并不把非凸外层的局部最优条件提升为全局最优定理. 
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.93\linewidth]{q2_v26_parameter_profiles.pdf}
+\caption{常指数模型与曲率模型的 $\beta,\delta$ 参数剖面. 参数组合的稳定性需要联合评估. }\label{fig:q2-v26-profiles}
+\end{figure}
+
+B1 的真实轨迹独立给出
+\begin{align*}
+(E,A,B)&=(1.68979756,0.35398032,1.24030558),\\
+(\alpha,\beta)&=(0.33997658,0.27987813),
+\end{align*}
+留一模型规模 RMSE 为 $0.000151180$. 由于 $n,d$ 以十亿为单位，把系数换算回原始单位（$A_{\mathrm{raw}}=A\cdot10^{9\alpha}$, $B_{\mathrm{raw}}=B\cdot10^{9\beta}$）后为
+$(E,A_{\mathrm{raw}},B_{\mathrm{raw}})=(1.6898,\ 406.23,\ 409.67)$；
+与 Hoffmann 等报告的 $(E,A,B,\alpha,\beta)=(1.69,\ 406.4,\ 410.7,\ 0.34,\ 0.28)$\cite{hoffmann} 相比，
+$E,\alpha,\beta$ 在四位有效数字上一致，$A_{\mathrm{raw}}$ 与 $B_{\mathrm{raw}}$ 分别相差 $0.04\%$ 与 $0.25\%$. 
+这一对照说明本文的拟合流程能够在真实轨迹上复现文献级的经典标度律，故 B1 分支可作为跨来源检验的基准；
+它同时说明第三问使用的 B6 指数（$\beta=0.0956$）与真实轨迹（$\beta=0.2799$）的差异是\textbf{数据来源}差异而非估计误差，
+第~\ref{sec:q3-exponent-source} 节据此报告指数来源的敏感性情景. 
+该结果只检查同族轨迹的拟合与泛化；B3 插值点不能增加独立样本量，B2、B4、B5 的跨族排序亦不证明绝对 Loss 标尺可迁移. 尤其 B6 的 45 个单元均表现为质量提高、Loss 下降，而 B8 校准与外推子集的质量斜率为正. 没有共同质量标尺和生成公式时，将它们合并估计会掩盖机制冲突. 
+
+\subsubsection{第二问输出与证据边界}
+曲率模型的选择依据来自原分组样本外误差，而定理~\ref{thm:q2-log-marginal-v14} 的有限等价关系与局部微分则由模型形式解析推出；二者承担不同证据角色. 表~\ref{tab:q2-v26-validation} 支持在 B6 来源内采用状态相关的 $\gamma(Q)$；附录表~\ref{tab:q2-integrated-cv-v38} 仅显示另一单调候选的五折误差略低，其配对差区间跨零，故不改变第三问使用的全 B6 曲率参数. 式~\eqref{eq:q2-v26-parameters} 给出的参数满足命题~\ref{prop:q2-shape} 的形状约束. 特别地，在后续优化区间 $Q\in[Q_0,1]$ 上，点估计满足
+\[
+\gamma(Q)\ge \gamma(Q_0)=1.88464>0,
+\]
+从而质量提高在该区间内对应严格正的有效数据弹性. 该经验事实使 $w(Q)=\mathcal G(Q)^{-1}$ 在决策区间严格递减，为第三问的全局单调性与饱和判据提供条件，但并不把 B6 的半合成质量机制提升为跨来源定律. B8 的反向响应、第一问有限映射覆盖和未识别的 $\lambda_{\mathrm{mix}}$ 仍构成独立的迁移限制. 

@@ -1,0 +1,104 @@
+\section{关键数值算法与复核路径}\label{app:v39-algorithms}
+第一问按相同 \texttt{index} 对齐每对配比与 Loss 文件，先冻结 A5 分母与锚点；重复交叉验证选型之后，分别在平方根二次面和平方根 RBF 上计算相同的 17 个单域与 136 个双域探针，并在各自固定模型下对训练配方作 80 次重抽样. 第二问以 B1 拟合经典标度律，在 B6 估计质量响应；交叉验证以完整 $(N,D)$ 单元或质量等级分组，每折重估全部待比较参数. 
+
+第三问对每个给定 $(c,Q)$，令 $x=\ln n$，用严格凸问题的一阶最优性条件求 $n^*(Q,c)$，再取 $d=c/(kn+h(Q))$；外层使用端点、驻点及质量区间下界进行全局比较，记录目标上下界和预算残差. 对 $C7$ 五个上下文、三类成本和三档预算逐项保存名义结果，平均--CVaR 另解相应上图问题. 第四问在冻结组织抽样与联合分位拟合后，将 $\zeta r_CH$ 代入训练 FLOPs 目标；零增长复用锚点，减半增长一年新解完整第三问，减半增长两年与延续增长一年共用相同资源目标，再重算每次分位预测与两类区间. 该复用只因训练目标相同，所有新路径仍检查预算、质量最优性和原延续情景回算. 
+
+
+\subsection{第一问参考方法的补充数值对照}\label{app:q1-method-crosschecks}
+表~\ref{tab:q1-utility} 在正文给出多目标结果；这里保留模型族、训练强度、桥接形式与时间项的来源内诊断，均不替换四问的主模型. 
+\paragraph{多目标证据. \quad} 表~\ref{tab:q1-utility} 说明“平均性能”和“最坏域性能”不是同一个优化目标. 两者 Spearman 为 $0.838$、前 20 名交集为 $15/20$；从第 239 行改选最坏域最优的第 199 行，可使最坏域改善 $1.66\%$，均值仅恶化 $0.038\%$，且 256 个候选的均值--最坏域 Pareto 前沿只有这两个非支配点. 若改以域间标准差为目标，标准差由 $0.1238$ 降至 $0.0680$（改善 $45.1\%$），代价是均值恶化 $5.77\%$. 超额损失还依赖归一化：原始尺度与主目标都选第 239 行（Spearman $0.986$），按各域可改进空间归一后则改选第 219 行，并使其与最坏域目标的相关降至 $0.642$. 因此后续所有“最优配比”都必须连同目标标尺一起解释. 
+
+\paragraph{代理模型选择本身的风险（RegMix \cite{regmix}）. \quad}
+平方根二次面与平方根 RBF 在 A4/A5 重复交叉验证中的宏平均 RMSE 仅差 $0.001304$；两者在历史 1M 候选表上都选第 239 行. 因此，同一候选池不足以证明二次面产生了不同的最优配方，事后对照也不能替代嵌套验证. RegMix 提倡对高排名方案进行稳健筛选，本题附件没有额外训练接口验证这种集成策略；模型族和候选池的不确定性仍应与给定集合内的后悔值分开报告. 
+
+\paragraph{``高质量源未必高份额''（RegMix \cite{regmix}）. \quad}
+在六个已映射域上，域质量与该域在选定配方中的份额的 Spearman 相关仅为 $+0.086$：
+质量最高的 arxiv（$0.8209$）只占 $9.6\%$，而质量较低的 github（$0.5041$）占 $3.0\%$，
+没有质量观测的 pubmed\_abstracts 反而占 $34.9\%$. 这说明配比最优性与单域质量评分是
+两个不同的量，与 RegMix 关于``直觉上的高质量数据源未必最优''的实验结论一致，
+也再次限制了把 $Q$ 直接乘进配比的写法. 
+
+\paragraph{训练强度分层诊断（次缩放 \cite{acl2025quality}）. \quad}
+ACL 2025 报告在约 $20$ tokens/parameter 附近资源边际收益会失衡. B1 的 $D/N$ 中位数为
+$97.3$、范围 $0.01$--$4251$，跨越该区间. 按 $D/N<25$、$25$--$100$、$\ge100$ 三档分组后，
+经典幂律的残差 RMSE 分别为 $1.68\times10^{-4}$、$1.20\times10^{-4}$ 与 $1.45\times10^{-4}$，
+没有随训练强度单调整体恶化的迹象. 因此在 Pythia 的观测范围内，不需要引入额外的
+次缩放衰减项；这支持第二问对 $D_{\mathrm{eff}}$ 的单一幂律写法. 
+
+\paragraph{桥接函数形式（FLP \cite{flp}）. \quad}
+在 C6 桥接上把线性换成 logistic（$S=100/[1+e^{-k(L-x_0)}]$）后，高可比组的留一 RMSE 由
+$0.553$ 升到 $3.011$，中可比组由 $10.071$ 升到 $14.093$. Pythia 的损失区间（$2.09$--$2.60$）
+尚未进入分数饱和段，因此线性桥接在该区间是合适的；FLP 建议的 S 型映射只在分数接近
+上界时才有优势，本文数据不覆盖该区间. 
+
+\paragraph{时间扩展标度律的可行性（算法进步 \cite{ho2024}）. \quad}
+本文尝试在文献汇总点 B5 上拟合带时间效率项的标度律
+$\mathcal L=E+AN^{-\alpha}e^{-\eta_N(Y-Y_0)}+BD^{-\beta}e^{-\eta_D(Y-Y_0)}$. 
+B5 的 44 个点只覆盖 $2020$、$2022$、$2023$ 三个年份（分别 $9$、$28$、$7$ 点），
+B4 的 12 个模型族则完全没有年份字段，因此时间项无法在本附件内被可靠识别：
+拟合得到的 $\eta_N$ 为负且标准误大于点估计. 第四问因此改用 C4 的发布时间字段构造
+时间轴，而不在第二问的数据上做时间分解. 
+
+
+% \subsection{质量评分函数与分组验证图}
+% 两项表面指标的十一组试算均冻结其余质量规则；图示只检查条件基线与排序的变化. 
+% \begin{figure}[htbp]\centering
+% \includegraphics[width=0.96\linewidth]{q1_quality_function_sensitivity.pdf}
+% \caption{第一问两项表面适宜度函数的敏感性. 点均来自冻结的十一组试算；橙点为联合平台主比较，虚线为正式主口径 $Q_0$. 七域排序相同不代表绝对质量标尺得到外部验证. }\label{fig:q1-function-sensitivity-v11}
+% \end{figure}
+
+\subsection{第二问分组验证与备选质量响应}
+表~\ref{tab:q2-v26-validation} 是正文主选型证据；下图为相同分组结果的可视化. 
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.91\linewidth]{q2_v26_validation_rmse_comparison.pdf}
+\caption{第二问固定分组口径下的预测误差. B7 的新质量等级不参与模型选择，B8 未并入拟合. }\label{fig:q2-v26-validation}
+\end{figure}
+积分斜率候选使用另一项完整资源单元五折协议，不能与逐单元留一结果直接拼接. 
+\begin{table}[htbp]\centering\small
+\caption{B6 完整资源单元五折检验的新增质量响应比较；360 行留出误差合并计算}\label{tab:q2-integrated-cv-v38}
+\begin{tabular}{lr}\toprule
+质量响应形式 & 原始 Loss 的合并 RMSE\\\midrule
+曲率模型，逐折重新拟合 & 0.06669707\\
+四段单调积分斜率，逐折重新拟合 & 0.06589885\\\bottomrule
+\end{tabular}
+\end{table}
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.86\linewidth]{q2_grouped_resource_validation.pdf}
+\caption{同一完整资源单元五折下两种质量响应的留出 RMSE；橙色候选的微小总体优势在成对重抽样下未排除零差. }\label{fig:q2-integrated-cv-v38}
+\end{figure}
+
+\subsection{第三问稳健配置的数值折中}
+正文表~\ref{tab:q3-v26-regret} 与表~\ref{tab:q3-cvar-evaluation-v38} 给出收益和不利的第二组重抽样结果；以下两图保留名义成本与代表情景的逐项对照. 
+\begin{figure}[H]\centering
+\includegraphics[width=0.91\linewidth]{q3_v26_nominal_cost_of_robustness.pdf}
+\caption{降低有限情景最大后悔值所付出的名义 Loss 代价. }\label{fig:q3-v26-cost}
+\end{figure}
+\begin{figure}[H]\centering
+\includegraphics[width=0.83\linewidth]{q3_cvar_tradeoff_power_1e19.pdf}
+\caption{$10^{19}$ FLOPs、幂质量成本下第二组重抽样的平均与尾部后悔值；横纵坐标均以越低越好解释. }\label{fig:q3-cvar-evaluation-v38}
+\end{figure}
+
+\subsection{第四问惩罚敏感性与校准图}
+惩罚强度的九档重拟合检查时间斜率的零值及规模斜率的变化；校准图与正文表~\ref{tab:q4-v26-calibration} 使用相同回溯记录. 
+\begin{table}[htbp]\centering\footnotesize
+\setlength{\tabcolsep}{5pt}
+\caption{共享斜率对惩罚强度的敏感性；斜率为原分数尺度的换算值，Pinball 为归一化加权目标，所有拟合的系数盒均未激活}\label{tab:q4-lambda-sensitivity}
+\begin{tabular}{lrrrrr}\toprule
+$\lambda_{\mathrm{QR}}$ & $b_N$（分/十倍） & $b_t$（分/年） & 加权 Pinball & 后训练 24 月 & 预训练 24 月\\\midrule
+$0.01$ & $1.852$ & $-1.5\times10^{-14}$ & $0.008916$ & $32.699$ & $22.641$\\
+$0.05$ & $1.852$ & $6.7\times10^{-15}$ & $0.008916$ & $32.699$ & $22.641$\\
+$0.10$ & $1.852$ & $1.0\times10^{-14}$ & $0.008916$ & $32.699$ & $22.641$\\
+$0.25$ & $1.909$ & $0.1048$ & $0.008923$ & $32.972$ & $22.938$\\
+$0.50$ & $1.955$ & $-1.8\times10^{-14}$ & $0.008928$ & $32.679$ & $22.656$\\
+$1$（主候选） & $1.955$ & $-1.0\times10^{-15}$ & $0.008928$ & $32.679$ & $22.656$\\
+$2$ & $2.120$ & $3.7\times10^{-14}$ & $0.009035$ & $32.647$ & $22.680$\\
+$5$ & $4.027$ & $-4.6\times10^{-14}$ & $0.012828$ & $32.277$ & $22.956$\\
+$10$ & $5.246$ & $3.7\times10^{-14}$ & $0.016112$ & $33.263$ & $23.133$\\\bottomrule
+\end{tabular}
+\end{table}
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.93\linewidth]{q4_v26_calibration.pdf}
+\caption{区间覆盖与宽度的对照，相应区间分数见表~\ref{tab:q4-v26-calibration}. 高覆盖可能来自几乎完整的分数支持区间，不能单独证明预测精确. }\label{fig:q4-v26-calibration}
+\end{figure}
+
+

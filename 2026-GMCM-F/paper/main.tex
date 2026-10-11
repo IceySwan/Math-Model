@@ -1,0 +1,155 @@
+% !TEX program = xelatex
+% 2026 年中国研究生数学建模竞赛 F 题
+% 算力约束下提升大语言模型能力的资源配置建模
+% 编译：xelatex -> bibtex(可选) -> xelatex -> xelatex
+\documentclass[bwprint]{gmcmthesis}
+
+\hypersetup{hidelinks}
+% 模板的 \thesubsection 里含 \thinskip（\hskip 0.05em），随标题写入 PDF 书签串时
+% hyperref 会对每个 \kern 报一次 “Token not allowed in a PDF string”（全文 226 条）。
+% 书签串里把 \thinskip 退化为空格即可，正文排版不受影响。
+\pdfstringdefDisableCommands{\let\thinskip\space}
+
+% ---- 页面设置：左右边距 2.5 cm（上下与页眉间距沿用模板默认）----
+% 模板默认左右各 22.5 mm；此处按中文论文常用的 2.5 cm 设置，正文宽 160 mm。
+%\geometry{top=30.0mm,bottom=25.0mm,left=25.0mm,right=25.0mm,headsep=8mm}
+
+% ---- 论文额外需要的宏包（模板已含 amsmath/amssymb/graphicx/booktabs/
+%      longtable/tabularx/caption/geometry/needspace 之外的补充）----
+\usepackage{mathtools}
+\usepackage{mathrsfs}
+\usepackage{needspace}
+\usepackage{float} % 使用 [H] 时需要
+\usepackage[noend]{algpseudocode}
+\usepackage{algorithm}
+\floatname{algorithm}{算法}
+\renewcommand{\algorithmicrequire}{\textbf{输入：}}
+\renewcommand{\algorithmicensure}{\textbf{输出：}}
+
+% ---- 定理类环境 ----
+% 模板已定义 definition/theorem/lemma/corollary/assumption/proof，但为全文连续编号；
+% 本文按节编号并共享同一计数器（与图 1 技术路线图中标注的编号一致）。
+% 做法：先用独立名字新建所需环境，再重绑定模板已占用的环境名。
+\makeatletter
+\let\proof\relax \let\endproof\relax
+\makeatother
+\usepackage{amsthm}
+\renewcommand{\proofname}{证明}
+\theoremstyle{definition}
+\newtheorem{thmdef}{定义}[section]
+\newtheorem{thmassumption}[thmdef]{假设}
+\theoremstyle{plain}
+\newtheorem{thmlemma}[thmdef]{引理}
+\newtheorem{thmtheorem}[thmdef]{定理}
+\newtheorem{thmproposition}[thmdef]{命题}
+\newtheorem{thmcorollary}[thmdef]{推论}
+\theoremstyle{remark}
+\newtheorem*{thmremark}{说明}
+\renewenvironment{definition}{\begin{thmdef}}{\end{thmdef}}
+\renewenvironment{assumption}{\begin{thmassumption}}{\end{thmassumption}}
+\renewenvironment{lemma}{\begin{thmlemma}}{\end{thmlemma}}
+\renewenvironment{theorem}{\begin{thmtheorem}}{\end{thmtheorem}}
+\newenvironment{proposition}{\begin{thmproposition}}{\end{thmproposition}}
+\renewenvironment{corollary}{\begin{thmcorollary}}{\end{thmcorollary}}
+\newenvironment{remark}{\begin{thmremark}}{\end{thmremark}}
+
+% ---- 正文使用的记号 ----
+\newcommand{\pvec}{\mathbf p}
+\newcommand{\one}{\mathbf 1}
+\newcommand{\Prob}{\mathbb P}
+\newcommand{\E}{\mathbb E}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\Loss}{\mathcal L}
+\newcommand{\DeltaJ}{\Delta\widehat J}
+\newcommand{\dd}{\mathop{}\!\mathrm d}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+\setlength{\emergencystretch}{3em}
+
+% ===================== 封面信息（提交前填写）=====================
+\title{算力约束下提升大语言模型能力的资源配置建模}
+\baominghao{\hspace{6em} 26104590182}
+\schoolname{\hspace{5.8em} xxxx}
+\membera{\hspace{6em} xxx}
+\memberb{\hspace{6em} xxx}
+\memberc{\hspace{6em} xxx}
+% ==========================段排序=================================
+
+\newcounter{obsitem}
+\newcommand{\obsitem}[1]{%
+    \refstepcounter{obsitem}%
+    \par\noindent\textbf{(\arabic{obsitem})#1}
+}
+% ==========================subequation=================================
+%\usepackage{amsmath}
+
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+本文研究算力约束下大语言模型的资源配置问题，围绕数据质量、领域配比、参数规模、训练数据量与算力预算之间的关系，依次讨论\textbf{质量与配比的可识别性}、\textbf{质量修正下的资源替代}、\textbf{预算约束下的资源配置}以及\textbf{能力前沿建模}。四个问题通过质量标尺、有效数据量和训练算力等中间变量衔接，形成“\textbf{识别边界--有限资源替代--预算配置--条件能力前沿}”的分析路线。
+
+针对数据质量与领域配比问题，本文首先构造统一的数据质量代理，并将领域配比视为概率单纯形上的变量。对于部分领域缺少质量观测的情形，不对未知质量直接作点估计，而是给出\textbf{完整质量的部分识别区间}. 同时证明，在域质量固定时，\textbf{配比效应与质量交互效应不能由现有配比试验分别识别}. 据此，本文将质量评价与配比响应分开建模，并在平方根坐标下建立领域配比响应模型. 对于有限候选集，进一步给出\textbf{一致预测误差向配比选择后悔的传递界}，从而将预测误差与最终决策误差联系起来.
+
+针对数据质量与训练资源之间的关系，本文引入\textbf{质量修正的有效数据量}，并在来源内建立广义标度模型. 在给定模型结构和质量标尺的条件下，利用 Loss 对有效数据量的单调性，推导质量、数据量与领域配比之间保持 Loss 不变的\textbf{有限等价条件},  进一步给出有限质量变化对应的\textbf{等效参数规模及其存在条件}. 为检验共同质量响应假设，本文还给出\textbf{中心化均值矩阵的秩一必要条件}. 上述结果主要用于描述同一模型设定下不同资源状态之间的可比较关系，并不意味着不同数据来源之间具有相同的质量机制。
+
+针对算力预算约束下的资源配置问题，本文在固定质量下将原问题化为一维尺度优化，并证明相应\textbf{最优资源对的唯一性}。进一步将质量选择表示为关于参数规模的一族\textbf{仿射成本函数的下包络}，由此得到在既定假设下的\textbf{预算比较静态结果}：预算增加时，全局最优参数规模严格增加，最优质量不下降. 在此基础上，本文给出\textbf{有限预算达到最高质量水平的充要条件}，并分析质量饱和后的\textbf{高预算渐近结构}. 对于参数估计误差，进一步通过局部稳定性分析和有限情景后悔准则考察最优配置的稳健性.
+
+针对模型能力演进问题，本文首先统一评测口径，并区分模型规模变化、时间残差与训练 Loss 的不同作用. 在此基础上，采用\textbf{条件分位数}描述能力前沿，并通过\textbf{有限顶点约束}保证声明域内多个分位前沿保持有序，同时将联合拟合写成\textbf{凸优化问题}. 进一步利用目标函数在共享斜率方向上的曲率，将数值求解的目标间隙转化为相应的\textbf{参数误差界}. 第三问得到的训练算力路径仅作为第四问的条件输入, 对于超出历史支持范围的长期结果，本文将其解释为\textbf{给定模型和算力情景下的条件外推}，而非已验证的预测.
+
+综上，本文的主要理论成果包括：\textbf{部分信息下的数据质量识别界与配比决策后悔界}，\textbf{质量修正下的有限资源等价条件}，\textbf{基于仿射成本下包络的预算单调性与质量饱和判据}，以及\textbf{具有有序约束和全局可解性的条件分位数能力前沿}. 上述结果均在相应的数据口径、模型假设和声明域内成立，并通过数值计算对其适用性和敏感性进行检验，为算力约束下大语言模型资源配置提供了一套相互衔接的分析方法.
+
+\keywords{大语言模型、数据质量、广义标度律、有效数据量、仿射下包络、比较静态、决策后悔、条件分位数前沿.}
+\end{abstract}
+
+\pagestyle{plain}
+\setcounter{tocdepth}{2}
+\maketoc
+\clearpage
+
+
+
+
+\input{content/01_problem_overview}
+\input{content/02_data_and_notation}
+\input{content/04_question1}
+\input{content/05_question2}
+\input{content/06_question3}
+\input{content/07_question4}
+\input{content/08_conclusion}
+\bibliographystyle{gmcm}
+\bibliography{reference}
+
+% 目录展示正文层级与五个附录标题；附录内部条目仍保留 PDF 书签。
+\addtocontents{toc}{\protect\setcounter{tocdepth}{1}}
+\clearpage
+\begin{appendices}
+  % 模板的 \appendix 只改写 \thesection，表/图仍沿用"节号.序号"，在附录中显示为
+  % "表 1.46"这类无意义编号。此处把附录内的浮动体编号交给附录计数器，改为"表 A.1"。
+  \makeatletter
+  % 每个附录起始处重置浮动体计数器，使编号形如"表 A.1"、"表 D.1"而非跨附录累加。
+  \newcommand{\resetappendixfloats}{%
+    \setcounter{table}{0}%
+    \setcounter{figure}{0}%
+  }
+  \setcounter{section}{0}
+  \setcounter{table}{0}
+  \setcounter{figure}{0}
+  \renewcommand{\thetable}{\@Alph\c@section.\@arabic\c@table}
+  \renewcommand{\thefigure}{\@Alph\c@section.\@arabic\c@figure}
+  \makeatother
+  \renewcommand{\thesubsection}{\thesection.\arabic{subsection}}
+  \renewcommand{\thesubsubsection}{\thesubsection.\arabic{subsubsection}}
+  \input{content/14_appendix_background}
+  \input{content/10_appendix_proofs}
+  \input{content/11_appendix_algorithms}
+  %\input{content/09_appendix_data}
+  \input{content/13_appendix_programs}
+
+\end{appendices}
+
+\end{document}

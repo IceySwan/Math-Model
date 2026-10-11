@@ -1,0 +1,92 @@
+片段 1：Q1 平方根坐标二次岭与固定候选集（\texttt{q1/mixture\_solver.py} L 110-127） 候选模型集合在任何嵌套或外部评价之前固定；\texttt{sqrt} 坐标给出 $\sqrt{p_i}$ 与 $\sqrt{p_ip_k}$ 项。
+
+\begin{lstlisting}[language=Python,breaklines=true,basicstyle=\small\ttfamily,showstringspaces=false,frame=single,framesep=4pt,rulecolor=\color{gray!50},backgroundcolor=\color{gray!5},title={mixture\_solver.py}]
+def candidate_models(jobs: int = 4) -> dict:
+    """Finite candidate set fixed before nested or external evaluation."""
+    def trees(n=256, leaf=3, features=1.0):
+        return ExtraTreesRegressor(n_estimators=n, min_samples_leaf=leaf,
+                                   max_features=features, random_state=SEED, n_jobs=jobs)
+
+    def quadratic(kind, alpha):
+        """Degree-2 polynomial in raw, Helmert contrast, or sqrt coordinates.
+
+        In raw proportions, the sqrt model contains sqrt(p_i) and
+        sqrt(p_i * p_j) terms, as well as p_i terms. Finite-difference effects
+        are defined at their probes; they are not polynomial coefficients in p.
+        """
+        if kind not in {"raw", "contrast", "sqrt"}:
+            raise ValueError(f"Unknown quadratic coordinates: {kind}")
+        steps = [] if kind == "raw" else [SimplexFeatures(kind)]
+        return make_pipeline(*steps, PolynomialFeatures(2, include_bias=False),
+                             StandardScaler(), Ridge(alpha=alpha))
+\end{lstlisting}
+
+片段 2：Q3 质量区间的解析下界与全局比较骨架（\texttt{q3/core.py} L 155-182）. 区间下界取 $h(a)$ 与 $g(\ln b)$ 的组合，用凸支撑线给出该区间的目标下界；堆结构按最小下界优先分裂。
+
+\begin{lstlisting}[language=Python,breaklines=true,basicstyle=\small\ttfamily,showstringspaces=false,frame=single,framesep=4pt,rulecolor=\color{gray!50},backgroundcolor=\color{gray!5},title={core.py}]
+    def node(self,a,b,budget):
+        # h is nondecreasing and each g(log Q) is nonincreasing.
+        # Splitting them at opposite endpoints gives a global interval lower bound.
+        return self.scale(a,budget,h_override=self.cost.h(a),g_override=self.g(b))['lower']
+
+    def solve(self,budget,*,tol=1e-7,max_nodes=100000,refine=True):
+        if not math.isfinite(budget) or budget<=0:raise ValueError("Invalid budget")
+        count0=self.calls
+        points={}
+        def at(q):
+            q=float(q)
+            if q not in points:points[q]=self.scale(q,budget)
+            return points[q]['value']
+        def lower_bound(a,b):
+            if len(self.params)==1 and self.params[0].beta<=1:
+                # Each fixed-Q scale optimum increases with Q when beta<=1.
+                # Bounds on its profile derivative can certify monotonicity.
+                at(a);at(b)
+                p=self.params[0]
+                na=math.exp(points[a]['z']);nb=math.exp(points[b]['z'])
+                hpmin=min(self.cost.hp(a),self.cost.hp(b))
+                hpmax=max(self.cost.hp(a),self.cost.hp(b))
+                smin=min(p.slope(a),p.slope(b));smax=max(p.slope(a),p.slope(b))
+                upper=p.beta*hpmax/(self.k*na+self.cost.h(a))-smin/b
+                lower=p.beta*hpmin/(self.k*nb+self.cost.h(b))-smax/a
+                if upper < -1e-11:return points[b]['lower']
+                if lower > 1e-11:return points[a]['lower']
+            return self.node(a,b,budget)
+\end{lstlisting}
+
+片段 3：Q4 有序分位规划的顶点约束（\texttt{q4/ordered\_model.py} L 65-82）. 把形状要求化为矩形四个顶点上的线性约束，与 Pinball 损失的上图变量一起构成凸二次规划。
+
+\begin{lstlisting}[language=Python,breaklines=true,basicstyle=\small\ttfamily,showstringspaces=false,frame=single,framesep=4pt,rulecolor=\color{gray!50},backgroundcolor=\color{gray!5},title={ordered\_model.py}]
+    vertices=(domain_vertices(names)-center)/scale
+    vdesign=[];orders=[]
+    for g in range(2):
+        for v in vertices:
+            for j in range(3):
+                row=np.zeros(p);row[:nv]=v;row[nv+g*3+j]=1;vdesign.append(row)
+        for j in range(2):
+            row=np.zeros(p);row[nv+g*3+j+1]=1;row[nv+g*3+j]=-1;orders.append(row)
+    vd=np.array(vdesign);od=np.array(orders)
+    # D x >= b: t >= tau*(y-pred); t >= (tau-1)*(y-pred).
+    dim=p+nr
+    D=np.vstack([np.column_stack([levels[:,None]*design,np.eye(nr)]),
+        np.column_stack([(levels-1)[:,None]*design,np.eye(nr)]),
+        np.column_stack([vd,np.zeros((len(vd),nr))]),
+        np.column_stack([-vd,np.zeros((len(vd),nr))]),
+        np.column_stack([od,np.zeros((len(od),nr))])])
+    b=np.r_[levels*yy,(levels-1)*yy,np.zeros(len(vd)),-np.ones(len(vd)),np.zeros(len(od))]
+    lower=np.r_[np.full(p,-10.),np.zeros(nr)];upper=np.r_[np.full(p,10.),np.ones(nr)]
+\end{lstlisting}
+
+片段 4：顶点预测与全局间隙断言（\texttt{pipeline/finalize\_evidence.py} L 304-311）. 对全部矩形顶点逐点检查取值区间与分位间距，并断言归档的目标间隙上界。
+
+\begin{lstlisting}[language=Python,breaklines=true,basicstyle=\small\ttfamily,showstringspaces=false,frame=single,framesep=4pt,rulecolor=\color{gray!50},backgroundcolor=\color{gray!5},title={finalize\_evidence.py}]
+    predictions = fit.matrix(vertex_frame)
+    assert predictions.min() >= -1e-7 and predictions.max() <= 100 + 1e-7
+    assert (np.diff(predictions, axis=1) >= -1e-7).all()
+    metrics = pd.read_csv(Q4 / "rolling_metrics.csv")
+    role = metrics.loc[
+        metrics.role.eq("reused_late") & metrics.input_mode.eq("resource_forecast")
+        & metrics.model.eq("joint_size_time") & metrics.weighting.eq("row")
+    ].iloc[0]
+\end{lstlisting}
+

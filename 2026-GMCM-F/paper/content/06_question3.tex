@@ -1,0 +1,841 @@
+\section{问题三：算力约束下的资源配置与稳健优化}\label{sec:q3}
+
+第二问给出的 $\gamma(Q)$ 随质量变化. 第三问由预算活动性得到固定质量唯一资源对，随后以质量成本下包络证明全局最优质量的预算单调性；完备候选用于数值求解，有限饱和充要条件和充分预算连接高预算结构. 在名义主线之后，再讨论参数不确定性、最大后悔与平均--尾部风险. 数学最优性均相对于给定 Loss 和成本代理，经验支持域与稳健性另行标记. 
+
+\subsection{固定质量问题的唯一最优资源对}
+
+\subsubsection{总预算与条件优化问题}
+记 $c:=C/10^{18}$，$k:=6+\eta_{\mathrm{att}}L_{\mathrm{ctx}}$，$\eta_{\mathrm{att}}=2\times10^{-4}$. 单位 Token 的质量处理成本记为 $c_Q(Q)$，并令 $h(Q):=[c_Q(Q)-c_Q(Q_0)]/10^9$. 则总成本为
+\begin{equation}\label{eq:q3-budget-v26}
+C=6ND+\eta_{\mathrm{att}}L_{\mathrm{ctx}}ND+D\{c_Q(Q)-c_Q(Q_0)\},
+\quad d[kn+h(Q)]\le c.
+\end{equation}
+主模型的 $Q_0=0.6074742$，三个质量成本情景为
+\begin{equation}\label{eq:q3-cost-families}
+h(Q)=\begin{cases}
+0.01s_h(e^{6Q}-e^{6Q_0}),&\text{指数成本},\\
+5s_h(Q^4-Q_0^4),&\text{幂成本},\\
+2s_h\ln\!\dfrac{1+10Q}{1+10Q_0},&\text{对数成本},
+\end{cases}\quad s_h>0.
+\end{equation}
+默认 $s_h=1$. 这些成本在 $[Q_0,1]$ 非负、光滑且递增；成本倍数及代理质量起点另作敏感性分析. C7 支持的上下文为 $2048,4096,8192,32768,131072$ Token. 注意力与基础训练成本的比值为 $\eta_{\mathrm{att}}L_{\mathrm{ctx}}/6$，在 $L_{\mathrm{ctx}}=30000$ 时相等，这是成本定义的直接结果. 
+题面单位 Token 的质量成本系数经 $h=[c_Q(Q)-c_Q(Q_0)]/10^9$ 换算为式~\eqref{eq:q3-cost-families} 的 $0.01,5,2$，与 $c=C/10^{18}$ 的 B 单位资源表达一致. 把注意力项与基础训练项相等，可得
+\begin{equation}\label{eq:q3-v39-critical-context}
+6ND=\eta_{\mathrm{att}}L_{\mathrm{ctx}}ND
+\quad\Longleftrightarrow\quad
+L_{\mathrm{ctx}}^{\mathrm{crit}}
+=\frac6{\eta_{\mathrm{att}}}=\frac6{2\times10^{-4}}=30000.
+\end{equation}
+C7 的五个可行值中，2048、4096、8192 三个低于临界值；32768、131072 两个高于临界值. 对应注意力与基础训练之比分别约为 $0.0683,0.1365,0.2731,1.0923,4.3691$；32768 是最邻近的高侧取值. 
+
+固定配比令 $B_p:=B\exp(\beta\lambda_{\mathrm{mix}}\psi)>0$，主情景 $\psi=0$、$B_p=B$. 优化问题及其值函数为
+\begin{equation}\label{eq:q3-value-v12}
+V(c):=\min_{\substack{n,d>0,\ Q_0\le Q\le1\\d[kn+h(Q)]\le c}}
+\{E+An^{-\alpha}+B_p d^{-\beta}e^{g(\ln Q)}\}.
+\end{equation}
+这里 $g$ 是第二问的质量响应，$h$ 是本问的处理成本，二者不能互换. 
+
+\begin{lemma}[最优预算活动]\label{lem:q3-budget-active}
+若 $A,B_p,k,c,\alpha,\beta>0$、$h\ge0$，则式~\eqref{eq:q3-value-v12} 的任何最优点均满足 $d[kn+h(Q)]=c$. 
+\end{lemma}
+\begin{proof}
+若预算严格松弛，固定 $n,Q$ 后可适当增加 $d$. 因 $\partial_d\mathcal L=-\beta B_p d^{-\beta-1}e^{g(\ln Q)}<0$，Loss 严格下降，与最优性矛盾. 
+\end{proof}
+引理的前提没有额外数据量上限；把经验范围人为作为硬约束后，预算活动性需要重新检查. 
+
+\begin{definition}[对数尺度剖面]\label{def:q3-profile}
+对固定 $Q$，令 $x:=\ln n\in\mathbb R$，$s(x,Q):=ke^x+h(Q)>0$. 消去 $d=c/s$ 后定义
+\begin{subequations}\label{eq:q3-profile-v26}
+   \begin{equation}
+       \ell_c(x,Q):=E+\mathcal L_N+\mathcal L_D,
+   \end{equation}
+   \begin{equation}
+       \mathcal L_N:=Ae^{-\alpha x},\quad \mathcal L_D:=B_pc^{-\beta}s(x,Q)^\beta e^{g(\ln Q)},\quad r:=\frac{ke^x}{s(x,Q)}\in(0,1].
+   \end{equation}
+\end{subequations}
+\end{definition}
+\begin{theorem}[固定质量的唯一预算最优资源对]\label{thm:q3-unique-scale}
+对任意固定 $Q\in[Q_0,1]$，若 $A,B_p,k,c,\alpha,\beta>0$ 且 $h(Q)\ge0$，则 $x\mapsto\ell_c(x,Q)$ 严格凸且强制，存在唯一极小点 $x^*(Q)$. 对应的$n^*(Q)=e^{x^*(Q)},\quad d^*(Q)=\frac c{kn^*(Q)+h(Q)}$
+是固定质量预算子问题的唯一最优资源对，并由下式唯一确定：
+\begin{equation}\label{eq:q3-scale-root}
+c^\beta=\frac{\beta B_pk}{\alpha A}
+n^{\alpha+1}[kn+h(Q)]^{\beta-1}e^{g(\ln Q)}.
+\end{equation}
+\end{theorem}
+\begin{proof}
+直接求导得
+\begin{subequations}\label{eq:q3-convex-derivatives}
+    \begin{align}
+\ell_x&=-\alpha\mathcal L_N+\beta\mathcal L_Dr,\\
+\ell_{xx}&=\alpha^2\mathcal L_N+
+\beta\mathcal L_Dr\{(1-r)+\beta r\}>0.
+\end{align}
+\end{subequations}
+
+当 $x\to-\infty$ 时 $\mathcal L_N\to\infty$；当 $x\to\infty$ 时 $s\sim ke^x$，故 $\mathcal L_D\to\infty$. 利用命题~\ref{prop:bg-convex-minimum-v26} 可得唯一全局极小点. 将 $\ell_x=0$ 整理即得式~\eqref{eq:q3-scale-root}；引理~\ref{lem:q3-budget-active} 使 $d$ 也被唯一决定. 另从右侧对 $\ln n$ 求对数导数得到 $\alpha+1+(\beta-1)r>0$，故也可由单调根唯一性直接求解. 
+\end{proof}
+%这一结果保留了常指数模型的尺度唯一性，但不要求 $\gamma(Q)$ 为常数. 严格凸性成立于 $x=\ln n$；不能据此断言完整 $(x,Q)$ 问题联合凸. 
+
+\subsubsection{质量边际与预算收益均衡}
+令 $a(Q)=-g'(\ln Q)=\beta\gamma(Q)$. 由链式法则
+\begin{equation}\label{eq:q3-qderivative-v9}
+\ell_Q=\mathcal L_D\left\{\frac{\beta h'(Q)}{kn+h(Q)}-\frac{a(Q)}Q\right\}.
+\end{equation}
+因此内点的质量条件是收益弹性与成本弹性的相等，而不再含单一常数质量指数：
+\begin{equation}\label{eq:q3-quality-stationary}
+Qh'(Q)=\gamma(Q)[kn+h(Q)].
+\end{equation}
+若 $a(Q)>0$，先由该式得到 $n_{stat}(Q)=[Qh'(Q)/\gamma(Q)-h(Q)]/k$；仅当此值为正时，才可代入式~\eqref{eq:q3-scale-root} 生成相应预算候选. 若 $a(Q)=0$，应使用未相除的式~\eqref{eq:q3-qderivative-v9}. 
+
+\textbf{KKT 的单位算力边际均衡:}
+设 $Q_0<Q<1$、$h'(Q)>0$，且为满足 KKT 条件的局部最优点. 其预算乘子 $\mu>0$ 满足
+\begin{equation}\label{eq:q3-cost-marginal-v15}
+\frac{\alpha An^{-\alpha-1}}{kd}
+=\frac{\beta\mathcal L_D}{d(kn+h)}
+=\frac{a(Q)\mathcal L_D}{Qdh'(Q)}=\mu.
+\end{equation}
+其中左右两式来自参数规模和质量方向, 中间式来自数据量方向，
+该关系由对 $n,d,Q$ 的 KKT 驻点式分别除以对应正边际成本得到，用于解释内点候选的资源均衡；全局性仍由后续质量剖面比较给出. 
+预算梯度的 $d$ 分量为 $kn+h>0$，内点满足相关约束资格；质量端点还需加入边界乘子. KKT 是候选筛选条件，全局性由后续质量比较给出. 
+
+\subsection{仿射成本下包络与预算单调定理}\label{sec:q3-global-envelope-v37}
+
+固定质量的边际随预算单调，只描述一条局部分支. 要比较不同预算的全局最优质量，需把质量与规模的共同作用重新表示为一族仿射成本. 
+
+\begin{definition}[有效质量成本的下包络]\label{def:q3-quality-envelope-v37}
+在固定配比、上下文及模型参数下，令
+\begin{equation}\label{eq:q3-quality-envelope-v37}
+w(Q):=e^{g(\ln Q)/\beta}=\mathcal G(Q)^{-1},\quad
+\mathscr H(n):=\min_{Q\in[Q_0,1]}w(Q)[kn+h(Q)].
+\end{equation}
+其中 $w$ 为有效数据折算的倒数，$\mathscr H$ 为质量指标化仿射族的下包络. 
+\end{definition}
+预算活动性与正幂函数的单调性给出精确约化
+\begin{subequations}\label{eq:q3-envelope-value-v37}
+\begin{align}
+L_c(n,Q)&:=\ell_c(\ln n,Q)
+=E+An^{-\alpha}+B_pc^{-\beta}\{w(Q)[kn+h(Q)]\}^{\beta},\\
+V(c)&:=\min_{n>0,Q\in[Q_0,1]}L_c(n,Q)
+=E+\min_{n>0}\{An^{-\alpha}+B_pc^{-\beta}\mathscr H(n)^\beta\}.
+\end{align}
+\end{subequations}
+命题~\ref{prop:bg-affine-envelope-v37} 表明 $\mathscr H$ 连续、凹且严格递增. 这里凹的是成本下包络，式~\eqref{eq:q3-envelope-value-v37} 的完整目标不由此成为凸函数. 
+
+\begin{theorem}[全局资源配置的预算单调性]\label{thm:q3-global-monotonicity-v37}
+设 $0<Q_0<1$，$A,B_p,k,\alpha,\beta>0$，$h$ 在 $[Q_0,1]$ 上连续且非负，$g$ 连续，且式~\eqref{eq:q3-quality-envelope-v37} 的 $w$ 严格递减. 所有参数、配比和成本均不随预算改变，资源变量除正性和总预算外不受额外上限约束. 则每个 $c>0$ 都存在全局最优解；对任意 $0<c_1<c_2$，任取两预算的全局最优解 $(n_1,Q_1)$ 和 $(n_2,Q_2)$，都有
+\begin{equation}\label{eq:q3-global-monotonicity-v37}
+n_1<n_2,\quad Q_1\le Q_2.
+\end{equation}
+%该结论允许质量和规模随预算跳跃，不要求同一预算的完整最优解唯一. 
+\end{theorem}
+\begin{proof}
+由于 $w$ 在紧区间有正下界 $w_{\min}$，有 $\mathscr H(n)\ge kw_{\min}n$. 当 $n\to0^+$ 时参数损失项趋于无穷，当 $n\to\infty$ 时数据损失项趋于无穷. 因此目标关于尺度强制，质量区间又紧，全局最小值能够取得. 
+
+先证明一个最优尺度处的活动质量唯一. 若不同质量 $Q_a,Q_b$ 在同一全局最优尺度 $n_*$ 上均达到 $\mathscr H(n_*)$，则两对 $(n_*,Q_a)$、$(n_*,Q_b)$ 都全局最优. 分别对正尺度 $n$ 使用一阶必要条件，得到
+\[
+\alpha An_*^{-\alpha-1}
+=\beta B_pc^{-\beta}\mathscr H(n_*)^{\beta-1}kw(Q_a)
+=\beta B_pc^{-\beta}\mathscr H(n_*)^{\beta-1}kw(Q_b).
+\]
+公共因子均为正，故 $w(Q_a)=w(Q_b)$；严格递减性迫使 $Q_a=Q_b$. 这只排除最优尺度处的不同活动质量，不排除普通尺度处的下包络折点. 
+
+令 $t_i=B_pc_i^{-\beta}$，则 $t_1>t_2$. 两个预算的最优性分别给出
+\begin{align*}
+An_1^{-\alpha}+t_1\mathscr H(n_1)^\beta
+&\le An_2^{-\alpha}+t_1\mathscr H(n_2)^\beta,\\
+An_2^{-\alpha}+t_2\mathscr H(n_2)^\beta
+&\le An_1^{-\alpha}+t_2\mathscr H(n_1)^\beta.
+\end{align*}
+相加得到 $(t_1-t_2)\{\mathscr H(n_1)^\beta-\mathscr H(n_2)^\beta\}\le0$. 由 $\mathscr H$ 严格递增，知 $n_1\le n_2$. 若相等，两预算在该尺度具有相同的唯一活动质量，而尺度一阶条件又要求 $t_1=t_2$，矛盾，故 $n_1<n_2$. 
+
+最后令 $a_Q(n)=kw(Q)n+w(Q)h(Q)$. 质量在各自尺度最优意味着
+\[
+a_{Q_1}(n_1)\le a_{Q_2}(n_1),\quad
+a_{Q_2}(n_2)\le a_{Q_1}(n_2).
+\]
+相加并消去截距，得到 $k\{w(Q_1)-w(Q_2)\}(n_2-n_1)\ge0$. 由 $n_2>n_1$ 与 $w$ 严格递减，得到 $Q_1\le Q_2$. 
+\end{proof}
+
+\begin{corollary}[饱和持续性与质量跳跃的规模响应]\label{cor:q3-persistent-saturation-v37}
+在定理~\ref{thm:q3-global-monotonicity-v37} 的条件下，若 $c_0$ 有一个全局最优解满足 $Q=1$，则所有 $c>c_0$ 的每个全局最优解均满足 $Q=1$. 若某个正预算处最优质量的左右极限不同，则全局最优参数量也在该处向上跳跃. 
+\end{corollary}
+% 结论显然, 不予证明
+%\begin{proof}
+%第一结论直接由式~\eqref{eq:q3-global-monotonicity-v37} 与 $Q\le1$ 得到. 对第二结论，任意紧正预算区间内，前述强制性给出最优尺度的一致正下界和有限上界. 单调性保证左右极限存在，连续性保证极限仍为该预算的全局最优解. 若左右质量不同但尺度相同，就违反定理证明中的活动质量唯一性；结合尺度单调性，跳跃只能向上. 
+%\end{proof}
+
+几何上，求 $\mathscr H(n)$ 等于以方向 $(kn,1)$ 在线性目标下最小化曲线
+$\{(w(Q),w(Q)h(Q)):Q\in[Q_0,1]\}$. 只有被这些方向支撑的下凸包部分可能成为最优质量，其余质量可排除. %取凸包不改变线性目标的最小值，但不表示实际语料质量可以按凸组合混合. 连续质量的筛选仍需控制曲线间隙，有限网格凸包只对其离散候选精确. 
+
+本定理比固定质量边际引理更强，且不要求 $h$ 单调或 $\beta\le1$. 它暂不涵盖预算相关参数、资源硬上限、质量与 $N,D$ 的新交互项及多参数情景风险目标；也未断言原始 Token 数随预算单调. 若 $w$ 含平坦区，活动质量唯一性的证明失效，不能直接沿用全部严格结论. 
+
+\subsection{质量剖面的完备候选与边界激活}
+
+\begin{definition}[剖面目标的完备候选集]\label{def:q3-complete-candidate-v29}
+设连续函数 $f$ 定义在闭有界区间 $I$ 上. 若 $\mathcal C\subseteq I$ 满足 $\argmin_I f=\argmin_{\mathcal C}f$，则称 $\mathcal C$ 为完备候选集. 完备性表示不遗漏任何全局最小点，不意味着该集合有限. 
+\end{definition}
+
+\begin{theorem}[质量剖面的完备候选与边界激活]\label{thm:q3-active-transition}
+设 $0<Q_0<1$，$A,B_p,c,k,\alpha,\beta>0$，$h$ 在包含 $[Q_0,1]$ 的开区间上为 $C^1$、在该闭区间非负，$g$ 在对应对数区间的邻域为 $C^1$. 则 $n^*(Q)$ 及质量剖面 $\bar\ell_c(Q):=\ell_c(\ln n^*(Q),Q)$ 在闭区间连续、内部为 $C^1$，且
+\begin{subequations}\label{eq:q3-candidate-set-v25}
+    \begin{align}
+\mathcal C(c)&:=\{Q_0,1\}\cup
+\{Q\in(Q_0,1):Qh'(Q)=\gamma(Q)[kn^*(Q)+h(Q)]\},\\
+\mathcal Q^*(c)&:=\argmin_{Q\in[Q_0,1]}\bar\ell_c(Q)
+=\argmin_{Q\in\mathcal C(c)}\bar\ell_c(Q).
+\end{align}
+\end{subequations}
+若 $Q_0$ 为全局最优质量，必要条件为 $Q_0h'(Q_0)\ge\gamma(Q_0)[kn^*(Q_0)+h(Q_0)]$；
+若 $1$ 为全局最优质量，必要条件为 $h'(1)\le\gamma(1)[kn^*(1)+h(1)]$. 
+\end{theorem}
+\begin{proof}
+固定质量的一阶条件 $\ell_x=0$ 对 $(x,Q)$ 连续可微，且 $\ell_{xx}>0$. 由背景隐函数引理~\ref{thm:bg-implicit-simple-root}，根在每个内部点有唯一 $C^1$ 延拓；唯一性把局部分支拼成同一分支，端点的一侧限制给出连续性. 背景剖面导数公式~\ref{prop:bg-profile-derivative} 与 $\ell_x=0$ 给出 $\bar\ell_c'(Q)=\ell_Q(x^*(Q),Q)$. 连续剖面在紧区间取得最小值，每个内部最小点必须使该导数为零，端点又已包含，故候选集完备. 两端的单边导数符号分别非负、非正，代入式~\eqref{eq:q3-qderivative-v9} 即得边界必要条件. 
+\end{proof}
+
+\begin{lemma}[固定质量边际的预算单调性与局部阈值]\label{lem:q3-fixed-quality-threshold}
+在定理~\ref{thm:q3-unique-scale} 的条件下，固定 $Q\in[Q_0,1]$，并进一步假设 $h$ 在该点可微且 $\gamma(Q)>0$. 把唯一尺度解的预算依赖写为 $n^*(Q,c)$，定义质量边际符号函数
+\begin{equation}\label{eq:q3-fixed-q-margin}
+F_Q(c):=Qh'(Q)-\gamma(Q)\{kn^*(Q,c)+h(Q)\}.
+\end{equation}
+则 $c\mapsto n^*(Q,c)$ 为 $C^1$ 严格增函数，$c\mapsto F_Q(c)$ 为 $C^1$ 严格减函数. 令
+\begin{equation}\label{eq:q3-local-margin-m}
+m(Q):=\frac{Qh'(Q)}{\gamma(Q)}-h(Q).
+\end{equation}
+若 $m(Q)\le0$，则 $F_Q(c)<0$ 对所有 $c>0$ 成立，不存在正的局部边际阈值；若 $m(Q)>0$，则方程 $F_Q(c)=0$ 恰有一个正解 $c_{\rm loc}(Q)$. 记
+\begin{equation}\label{eq:q3-local-n}
+n_{\rm loc}(Q):=\frac{m(Q)}k,\quad
+s_{\rm loc}(Q):=kn_{\rm loc}(Q)+h(Q)=\frac{Qh'(Q)}{\gamma(Q)},
+\end{equation}
+则该阈值可显式写为
+\begin{equation}\label{eq:q3-local-threshold}
+c_{\rm loc}(Q)=\left[
+\frac{\beta B_pk}{\alpha A}
+ n_{\rm loc}(Q)^{\alpha+1}
+ s_{\rm loc}(Q)^{\beta-1}
+ e^{g(\ln Q)}
+\right]^{1/\beta}.
+\end{equation}
+对内部质量点，$\operatorname{sgn}\bar\ell_c'(Q)=\operatorname{sgn}F_Q(c)$；当 $Q=1$ 时，同一表达式给出左侧质量边际，$c_{\rm loc}(1)$ 即上边界的局部触边候选预算. 
+\end{lemma}
+\begin{proof}
+对固定 $Q$，将式~\eqref{eq:q3-scale-root} 的右侧记为 $\Phi_Q(n)$. 其关于 $\ln n$ 的对数导数为
+\[
+\alpha+1+(\beta-1)\frac{kn}{kn+h(Q)}
+\ge \alpha+\min\{1,\beta\}>0,
+\]
+故 $\Phi_Q$ 在 $(0,\infty)$ 上严格递增，且从 $0$ 连续趋于 $+\infty$. 由隐函数定理，$c^\beta=\Phi_Q(n^*)$ 唯一确定 $C^1$ 函数 $n^*(Q,c)$，并有 $\partial n^*/\partial c>0$. 因此
+\[
+F_Q'(c)=-\gamma(Q)k\,\frac{\partial n^*(Q,c)}{\partial c}<0.
+\]
+又因 $c\to0^+$ 时 $n^*(Q,c)\to0^+$，$c\to\infty$ 时 $n^*(Q,c)\to\infty$，故
+\[
+\lim_{c\to0^+}F_Q(c)=Qh'(Q)-\gamma(Q)h(Q)=\gamma(Q)m(Q),\quad
+\lim_{c\to\infty}F_Q(c)=-\infty.
+\]
+若 $m(Q)\le0$，严格单调性给出 $F_Q(c)<0$；若 $m(Q)>0$，介值定理与严格单调性给出唯一正根. 根处 $kn^*+h(Q)=Qh'(Q)/\gamma(Q)$，由此得到式~\eqref{eq:q3-local-n}，再代入尺度方程~\eqref{eq:q3-scale-root} 即得式~\eqref{eq:q3-local-threshold}. 最后由式~\eqref{eq:q3-qderivative-v9} 的正因子分解可知剖面导数与 $F_Q$ 同号. 
+\end{proof}
+该引理只描述固定质量位置的局部边际，局部阈值仍不保证等于首次全局转移预算. 全局最优质量的预算单调性需由前述定理~\ref{thm:q3-global-monotonicity-v37} 的下包络比较另行证明. 
+
+\begin{corollary}[质量改变时的尺度分配方向]\label{cor:q3-quality-scale-direction}
+在上述条件下，若 $0<\beta\le1$、$h'\ge0$、$a\ge0$，则固定预算的尺度分支 $n^*(Q)$ 随 $Q$ 非降，相应 $d^*(Q)$ 非增. 
+\end{corollary}
+\begin{proof}
+由式~\eqref{eq:q3-convex-derivatives} 和式~\eqref{eq:q3-qderivative-v9}，
+\[
+\ell_{xQ}=\beta\mathcal L_Dr
+\left\{(\beta-1)\frac{h'}{kn+h}-\frac aQ\right\}\le0.
+\]
+对尺度驻点隐式求导，$\dd x^*/\dd Q=-\ell_{xQ}/\ell_{xx}\ge0$. 因 $n^*=e^{x^*}$，参数规模非降；而 $d^*=c/(kn^*+h)$ 的分母非降，数据量非增. 
+\end{proof}
+该方向结论比较同一预算、同一模型的不同固定质量分支；跨模型重估 $\alpha,\beta$ 后的配置变化仍须重新计算. 
+
+定义 $\mathcal S_{\rm sat}:=\{c>0:1\in\mathcal Q^*(c)\}$，并令
+\begin{equation}\label{eq:q3-transition-def-v12}
+c_{\rm tr}:=\inf\mathcal S_{\rm sat},\quad\inf\varnothing:=+\infty.
+\end{equation}
+该定义本身不保证下确界取到. 满足严格质量单调条件时，推论~\ref{cor:q3-persistent-saturation-v37} 已给出饱和持续性；下节将以充要条件证明集合非空及首次饱和的上区间结构. 全局切换仍可能发生跳跃，不能预设连续触边. 等式 $h'(1)=\gamma(1)[kn^*(1)+h(1)]$ 只能确定局部边界候选. 一般 $C^1$ 函数的内部驻点可能无穷多，因此全局比较不能仅依赖有限网格或根枚举；本文以可核验的质量区间下界控制未枚举区间的最优值. 
+
+\begin{lemma}[质量区间的解析下界]\label{prop:q3-quality-lower-bound}
+设 $h$ 非降，$g$ 非增. 对任意质量区间 $[q_-,q_+]\subseteq[Q_0,1]$，定义
+\begin{equation}\label{eq:q3-interval-lower}
+\ell^-_{[q_-,q_+]}(x):=E+Ae^{-\alpha x}
++B_pc^{-\beta}[ke^x+h(q_-)]^\beta e^{g(\ln q_+)}.
+\end{equation}
+则 $\ell_c(x,Q)\ge\ell^-_{[q_-,q_+]}(x)$ 对所有 $x\in\mathbb R,Q\in[q_-,q_+]$ 成立，且右侧关于 $x$ 严格凸. 因此其最小值为整个质量区间最优值的下界. 
+\end{lemma}
+\begin{proof}
+$h(Q)\ge h(q_-)$，而 $g(\ln Q)\ge g(\ln q_+)$；两项正因子分别取下界，其乘积仍为下界. 严格凸性由式~\eqref{eq:q3-convex-derivatives} 同样得到. 先对 $x$、再对 $Q$ 取下确界保持不等式. 
+\end{proof}
+%可行质量点上的尺度极小值给出上界. 内层求根用异号导数括住极小点，并由背景的凸函数支撑线给出下界；质量外层分裂当前下界最低的区间，直至全域上、下界之差达到预定精度. 这里使用的是含浮点余量的解析数值界，没有采用向外舍入的区间算术. 
+
+\subsection{有限预算质量饱和的充要条件}
+
+\begin{definition}[最终全局饱和]\label{def:q3-eventual-saturation-v29}
+若存在 $c_0>0$ 使所有 $c\ge c_0$ 均满足 $\mathcal Q^*(c)=\{1\}$，则称完整问题最终全局饱和. 它要求此后唯一且持续最优，比某个预算上 $1\in\mathcal Q^*(c)$ 更强. 
+\end{definition}
+
+\begin{proposition}[固定尺度的质量饱和阈值]\label{prop:q3-envelope-threshold-v37}
+在定理~\ref{thm:q3-global-monotonicity-v37} 的条件下，进一步设 $g(0)=0$，因而 $w(1)=1$. 定义扩展实数
+\begin{equation}\label{eq:q3-envelope-threshold-v37}
+n_{\rm env}:=\max\left\{0,\sup_{Q\in[Q_0,1)}
+\frac{h(1)-w(Q)h(Q)}{k[w(Q)-1]}\right\}\in[0,+\infty].
+\end{equation}
+对任意有限正尺度 $n$，质量 $Q=1$ 达到 $\mathscr H(n)$ 当且仅当 $n\ge n_{\rm env}$；若 $n>n_{\rm env}$，则它是唯一活动质量. 
+\end{proposition}
+\begin{proof}
+因 $w$ 严格递减，对所有 $Q<1$ 有 $w(Q)>1$. 质量 $1$ 不劣于该 $Q$ 等价于
+\[
+kn+h(1)\le w(Q)[kn+h(Q)]
+\quad\Longleftrightarrow\quad
+n\ge\frac{h(1)-w(Q)h(Q)}{k[w(Q)-1]}.
+\]
+对所有 $Q<1$ 同时成立即等价于式~\eqref{eq:q3-envelope-threshold-v37} 的阈值条件；严格超过上确界时，逐质量比较均为严格不等式. 
+\end{proof}
+
+\Needspace{12\baselineskip}
+\begin{theorem}[有限预算质量饱和的充要条件]\label{thm:q3-finite-saturation-iff-v37}
+在命题~\ref{prop:q3-envelope-threshold-v37} 的条件下，下列命题等价：
+    \begin{enumerate}
+        %\renewcommand{\labelenumi}{(\roman{enumi})}
+        \item 存在有限正预算，使 $Q=1$ 属于全局最优解；
+        \item 完整问题最终全局饱和；
+        \item $n_{\rm env}<+\infty$.
+    \end{enumerate}
+\end{theorem}
+\begin{proof}
+若某个有限预算存在饱和全局解，其有限尺度必须满足 $n\ge n_{\rm env}$，故 (1) 推出 (3). 
+
+下证 (3) 推 (2)，取可行比较方案 $Q=1,n=c^{1/2}$ 并用满预算，得到
+$0<V(c)-E\le Ac^{-\alpha/2}+B_pc^{-\beta}[kc^{1/2}+h(1)]^\beta\longrightarrow0.$
+任意全局最优尺度均满足 $0<A[n^*(c)]^{-\alpha}\le V(c)-E$，且 $V(c)-E\to0$，故 $n^*(c)\to+\infty$；上界与最优解的选取无关，因此该发散对所有全局最优尺度一致成立. 当 $n_{\rm env}<\infty$ 时，充分大预算的每个最优尺度都严格超过 $n_{\rm env}$，由命题~\ref{prop:q3-envelope-threshold-v37}，此时只有质量 $1$ 活动，故最终全局饱和. (2) 推出 (1) 由定义立即成立. 
+\end{proof}
+
+\begin{proposition}[单调质量响应下的可计算饱和充分界]\label{prop:q3-envelope-explicit-bound-v38}
+在命题~\ref{prop:q3-envelope-threshold-v37} 的条件下，进一步设 $h$ 在 $[Q_0,1]$ 上非负、非降且可微，$H:=\max_{[Q_0,1]}h'(Q)<\infty$；$w(Q)=\exp\{g(\ln Q)/\beta\}$ 满足 $w'(Q)=-w(Q)\gamma(Q)/Q$，其中 $\gamma$ 正且随 $Q$ 非降. 任取 $Q_m\in(Q_0,1)$，有
+\begin{equation}\label{eq:q3-envelope-explicit-bound-v38}
+n_{\rm env}\le
+\max\left\{0,\frac{h(1)}{k[w(Q_m)-1]},
+\frac{w(Q_m)H}{k\gamma(Q_m)}\right\}<\infty.
+\end{equation}
+因此当前条件足以推出定理~\ref{thm:q3-finite-saturation-iff-v37} 的最终全局饱和. 
+\end{proposition}
+\begin{proof}
+若 $Q\le Q_m$，式~\eqref{eq:q3-envelope-threshold-v37} 的分子不超过 $h(1)$，分母至少为 $k[w(Q_m)-1]$. 若 $Q\ge Q_m$，由 $w(1)=1$、$w'h\le0$ 及 $w\le w(Q_m)$，
+\[
+h(1)-w(Q)h(Q)=\int_Q^1(wh)'(t)\,\dd t
+\le w(Q_m)H(1-Q).
+\]
+又因 $t\le1$、$w(t)\ge1$、$\gamma(t)\ge\gamma(Q_m)$，
+\[
+w(Q)-1=\int_Q^1\frac{w(t)\gamma(t)}{t}\,\dd t
+\ge\gamma(Q_m)(1-Q).
+\]
+分别代入割线比并取上确界得到式~\eqref{eq:q3-envelope-explicit-bound-v38}；分母均正且有限. 
+\end{proof}
+
+\begin{corollary}[首次全局饱和的上区间结构]\label{cor:q3-saturation-upper-interval-v37}
+在定理~\ref{thm:q3-finite-saturation-iff-v37} 的条件下，若 $n_{\rm env}<\infty$，则式~\eqref{eq:q3-transition-def-v12} 中的 $\mathcal S_{\rm sat}$ 非空. 若 $c_{\rm tr}>0$，有
+\[
+\mathcal S_{\rm sat}=[c_{\rm tr},+\infty),
+\quad\mathcal Q^*(c)=\{1\}\quad(c>c_{\rm tr});
+\]
+若 $c_{\rm tr}=0$，则所有正预算都唯一质量饱和. 在正临界预算本身可以存在多个全局最优配置. 
+\end{corollary}
+%\begin{proof}
+%定理给出非空性，推论~\ref{cor:q3-persistent-saturation-v37} 给出上区间性质. 若下确界为正，取饱和预算列趋于它；局部一致强制性使相应最优尺度有收敛子列，连续性使极限仍为该预算的饱和最优解，因此下确界属于集合. 若下确界为零，对任意正预算都能找到更小的饱和预算，再用持续性即可. 
+%\end{proof}
+
+该充要条件要求质量成本割线比有有限上界，不必要求端点质量弹性严格为正. 为说明其扩展范围，取 $a,b>0$，令
+
+\begin{subequations}\label{eq:q3-zero-elasticity-example-v37}
+\begin{align}
+w(Q)&=1+a(1-Q)^2,\quad g(\ln Q)=\beta\ln w(Q),\\
+h(Q)&=b\{(1-Q_0)^2-(1-Q)^2\}.
+\end{align}
+\end{subequations}
+
+这时 $h\ge0$，$w$ 严格递减，而
+$\gamma(Q)=\frac{2aQ(1-Q)}{1+a(1-Q)^2},\quad\gamma(1)=0.$
+直接代入式~\eqref{eq:q3-envelope-threshold-v37} 得 $n_{\rm env}=b/(ak)<\infty$，故仍会有限饱和. 该例刻画判据的数学范围，不作为附件数据的新拟合结果. 
+
+$n_{\rm env}$ 是固定尺度的质量阈值，不是预算阈值；计算 $c_{\rm tr}$ 仍须进行资源最优与质量全局比较. 上区间结构为二分定位提供理论依据，但每个预算的判定需要解析候选和区间界，不能仅凭浮点损失相等或粗网格接近端点. 下面保留一个可直接计算的充分预算，用于提供饱和区间的保守上端证据. 
+
+算法~\ref{alg:q3-global-configuration} 将上述定理转为名义配置的求解步骤. 初始网格和可定位驻点只提供可行上界；未被定位的内部极小点仍由质量区间下界覆盖. 局部触边候选预算与首次全局饱和预算的比较另按第~\ref{sec:q3-results} 节进行. 
+\begin{algorithm}[H]
+\caption{第三问的全局质量--资源配置求解}\label{alg:q3-global-configuration}
+\small
+\begin{algorithmic}[1]
+\Require 基线 $Q_0$，质量响应 $g$，成本 $h$，参数 $E,A,B_p,\alpha,\beta$，预算 $c$，上下文 $L_{\mathrm{ctx}}$，容差 $\varepsilon$
+\Ensure 配置 $(n^*,d^*,Q^*)$，目标界 $[L,U]$，预算相对残差 $r_c$
+\State $k\gets6+\eta_{\mathrm{att}}L_{\mathrm{ctx}}$；将 $[Q_0,1]$ 划为有限初始区间
+\State $\mathcal P\gets\{Q_0,1\}\cup\{\text{初始网格点}\}$
+\State 用 $\bar\ell_c'(q)=0$ 的变号区间定位内部驻点，并加入 $\mathcal P$ \Comment{定理~\ref{thm:q3-active-transition}}
+\State $U\gets+\infty$；$q^*\gets Q_0$；$\mathcal I\gets\varnothing$
+\For{$q\in\mathcal P$}
+  \State 括住 $\ell_x(x,q)=0$ 的唯一根，求得 $x_q$ 与 $v_q=\ell_c(x_q,q)$ \Comment{定理~\ref{thm:q3-unique-scale}}
+  \If{$v_q<U$} \State $U\gets v_q$；$q^*\gets q$；$x^*\gets x_q$ \EndIf
+\EndFor
+\For{每个初始区间 $I=[q_-,q_+]$}
+  \State $L_I\gets\min_x\ell^-_I(x)$；把 $(I,L_I)$ 加入 $\mathcal I$ \Comment{引理~\ref{prop:q3-quality-lower-bound}}
+\EndFor
+\While{$\mathcal I\ne\varnothing$ 且 $U-\min_{I\in\mathcal I}L_I>\varepsilon$}
+  \State 取出下界最小的区间 $I=[a,b]$；$m\gets(a+b)/2$
+  \State 求 $x_m$ 与 $v_m=\ell_c(x_m,m)$；若 $v_m<U$，更新 $(U,q^*,x^*)$
+  \State 对 $[a,m]$、$[m,b]$ 重算解析下界；保留下界小于 $U$ 的区间
+\EndWhile
+\State $L\gets\min\{U,\min_{I\in\mathcal I}L_I\}$，约定 $\min\varnothing=+\infty$
+\State $Q^*\gets q^*$；$n^*\gets e^{x^*}$；$d^*\gets c/[kn^*+h(Q^*)]$
+\State $r_c\gets\bigl|d^*[kn^*+h(Q^*)]/c-1\bigr|$ \Comment{核对 $U-L$ 与预算活动性}
+\State \Return $(n^*,d^*,Q^*),[L,U],r_c$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{proposition}[保证最终全局饱和的充分预算]\label{thm:q3-sufficient-saturation}
+在定理~\ref{thm:q3-active-transition} 的条件下，进一步设 $h'\ge0$，且 $\gamma_{\min}:=\min_{Q\in[Q_0,1]}\gamma(Q)>0$. 任选
+\[
+M>\max\left\{0,\max_{Q\in[Q_0,1]}
+\frac{Qh'(Q)/\gamma(Q)-h(Q)}k\right\},
+\]
+并定义
+\begin{equation}\label{eq:q3-sufficient-budget}
+\bar c:=\max_{Q\in[Q_0,1]}
+\left\{\frac{\beta B_pk}{\alpha A}
+M^{\alpha+1}[kM+h(Q)]^{\beta-1}e^{g(\ln Q)}\right\}^{1/\beta}.
+\end{equation}
+则 $c>\bar c$ 时 $\mathcal Q^*(c)=\{1\}$. %从而完整问题最终全局饱和. 
+\end{proposition}
+\begin{proof}
+连续函数在紧区间有界，且 $\gamma_{\min}>0$，故上述 $M$ 与有限 $\bar c$ 存在. 式~\eqref{eq:q3-scale-root} 的右侧关于 $n$ 严格递增；当 $c>\bar c$ 时，在每个 $Q$ 上必有 $n^*(Q)>M$. 因此 $kn^*(Q)+h(Q)>Qh'(Q)/\gamma(Q)$，由式~\eqref{eq:q3-qderivative-v9} 得剖面导数处处严格负，唯一全局最小质量为右端点 $1$. 取任意 $c_0>\bar c$ 即满足最终饱和定义. 
+\end{proof}
+本题的优化区间从 $Q_0>0.1$ 开始，点估计满足 $\gamma_{\min}=\gamma(Q_0)=1.88464>0$；三类质量成本在 $[Q_0,1]$ 上均为非减函数，因此命题~\ref{thm:q3-sufficient-saturation} 的关键假设在名义模型中成立. 充分预算 $\bar c$ 保证其后持续饱和，但并不等同于第一次出现 $Q^*=1$ 的预算. 数值部分采用式~\eqref{eq:q3-sufficient-budget} 的保守上界，以保持这一充分性解释. 
+
+\begin{theorem}[质量饱和约束分支的高预算极限分配]\label{thm:q3-asymptotic}
+设 $A,B_p,k,\alpha,\beta>0$，$h_1:=h(1)\ge0$，且 $g(0)=0$. 对每个 $c>0$，将质量固定为 $1$ 的预算问题有唯一最优资源对 $(n_1(c),d_1(c))$，两者均为 $C^1$. 当 $c\to\infty$ 时，$n_1\to\infty$、$h_1/(kn_1)\to0$，且
+\begin{subequations}\label{eq:q3-asymptotic-v12}
+    \begin{align}
+n_1(c)&\sim K_n c^{\beta/(\alpha+\beta)},\quad K_n:=\left(\frac{\alpha A}{\beta B_pk^\beta}\right)^{1/(\alpha+\beta)},\\
+d_1(c)&\sim(kK_n)^{-1}c^{\alpha/(\alpha+\beta)}.
+\end{align}
+\end{subequations}
+设 $r_1:=kn_1/(kn_1+h_1)$，则精确参数预算弹性及三类成本极限份额为
+\begin{subequations}\label{eq:q3-exact-elasticity-v26}
+    \begin{equation}
+\frac{\dd\ln n_1}{\dd\ln c}=\frac\beta{\alpha+1+(\beta-1)r_1},\quad  \frac{\dd\ln d_1}{\dd\ln c}=1-r_1\frac{\dd\ln n_1}{\dd\ln c},
+  \end{equation}
+  \begin{equation}
+\frac{6 n_1}{kn_1+h_1}\longrightarrow\frac6k,\quad
+\frac{\eta_{\mathrm{att}}L_{\mathrm{ctx}}n_1}{kn_1+h_1}\longrightarrow\frac{\eta_{\mathrm{att}}L_{\mathrm{ctx}}}k,
+\quad \frac{h_1}{kn_1+h_1}\longrightarrow0.
+\end{equation}
+\end{subequations}
+
+本定理首先陈述固定 $Q=1$ 的约束分支，未预先假定它在每个预算下都是完整问题的最优分支. 
+\end{theorem}
+\begin{proof}
+唯一性来自定理~\ref{thm:q3-unique-scale}. 式~\eqref{eq:q3-scale-root} 在 $Q=1$ 时可写为
+$n_1^{\alpha+1}(kn_1+h_1)^{\beta-1}=\frac{\alpha A}{\beta B_pk}c^\beta.$
+左侧在正半轴严格递增，从零趋于无穷；其对数导数为 $\alpha+1+(\beta-1)r_1>0$. 隐函数定理给出 $C^1$ 性，且右侧随 $c\to\infty$ 发散迫使 $n_1\to\infty$. 以 $kn_1+h_1\sim kn_1$ 代入并取正幂根，得到 $n_1$ 的渐近式；预算等式给出 $d_1$. 对上述根方程作对数微分得到精确弹性，再对 $d_1=c/(kn_1+h_1)$ 微分得到数据弹性. 成本份额由预算中三项分别除以 $c$，最后取 $n_1\to\infty$ 的极限. 
+\end{proof}
+
+\begin{corollary}[质量饱和分支的二阶高预算展开]\label{cor:q3-second-order-asymptotic}
+在定理~\ref{thm:q3-asymptotic} 的条件下，记
+\[
+m:=\alpha+\beta,\quad a:=\frac{\beta}{m},\quad
+\varepsilon(c):=\frac{h_1}{kK_n}c^{-a}.
+\]
+则 $\varepsilon(c)\to0$，且当 $c\to\infty$ 时
+\begin{subequations}
+    \begin{align}
+ n_1(c) &=K_n c^a\left[ 1+\frac{1-\beta}{m}\varepsilon -\frac{(1-\beta)(\alpha+1)}{2m^2}\varepsilon^2 +O(\varepsilon^3) \right],\label{eq:q3-n-second-order}\\
+ d_1(c)&=\frac{c^{1-a}}{kK_n}\left[1-\frac{\alpha+1}{m}\varepsilon+\frac{(\alpha+1)(2\alpha+3-\beta)}{2m^2}\varepsilon^2 +O(\varepsilon^3) \right].\label{eq:q3-d-second-order}
+\end{align}
+\end{subequations}
+特别地，参数量的一阶有限预算修正可写成
+\begin{equation}\label{eq:q3-n-first-correction}
+ n_1(c)=K_n c^a
+ +\frac{1-\beta}{\alpha+\beta}\frac{h_1}{k}
+ +O(c^{-a}).
+\end{equation}
+%若 $h_1=0$，则 $\varepsilon\equiv0$，式~\eqref{eq:q3-asymptotic-v12} 的主导幂律即为该约束分支的精确尺度关系. 
+\end{corollary}
+\begin{proof}
+令 $t:=K_n c^a$、$y:=n_1/t$. 由定理~\ref{thm:q3-asymptotic} 的精确根方程和 $K_n$ 的定义，得到
+\[
+y^m\left(1+\frac{\varepsilon}{y}\right)^{\beta-1}=1.
+\]
+定义
+\begin{equation*}
+    F(y,\varepsilon):=m\ln y+(\beta-1)\ln\left(1+\frac{\varepsilon}{y}\right).
+\end{equation*}
+有 $F(1,0)=0$ 且 $\partial_yF(1,0)=m>0$. 故由隐函数定理，$y$ 在 $\varepsilon=0$ 的邻域内可光滑表示为 $\varepsilon$ 的函数. 令
+\begin{equation}
+    y=1+a_1\varepsilon+a_2\varepsilon^2+O(\varepsilon^3)
+\end{equation}
+代入 $F(y,\varepsilon)=0$ 并逐阶比较系数，得到
+\begin{equation*}
+    a_1=\frac{1-\beta}{m},\quad a_2=-\frac{(1-\beta)(\alpha+1)}{2m^2}.
+\end{equation*}
+这给出式~\eqref{eq:q3-n-second-order}. 又由
+\begin{equation*}
+    d_1=\frac{c}{kn_1+h_1}=\frac{c^{1-a}}{kK_n}\frac{1}{y+\varepsilon},
+\end{equation*}
+对 $(y+\varepsilon)^{-1}$ 作 Taylor 展开即得式~\eqref{eq:q3-d-second-order}. 将 $\varepsilon=(h_1/(kK_n))c^{-a}$ 代回参数量展开的一阶项，得到式~\eqref{eq:q3-n-first-correction}. 
+\end{proof}
+
+推论~\ref{cor:q3-second-order-asymptotic} 给出了主导幂律的收敛速度. 以 $L_{\mathrm{ctx}}=8192$、指数质量成本和曲率质量模型为例，$10^{22}$ 与 $10^{24}$ FLOPs 下分别有 $\varepsilon\approx0.0788$ 与 $0.0243$. 与表~\ref{tab:q3-v26-config} 的精确优化值比较，单独使用主导幂律时参数量相对误差分别约为 $-14.55\%$ 与 $-5.35\%$，加入二阶修正后降至约 $-0.49\%$ 与 $-0.020\%$；数据量误差由约 $24.91\%$ 与 $8.08\%$ 降至约 $3.54\%$ 与 $0.115\%$. 因此二阶项主要解释已经进入高预算区间后尚未完全达到极限幂律的有限预算偏差；在较低预算下 $\varepsilon$ 不够小，不把该展开作为全预算近似. 
+
+\begin{corollary}[完整问题的条件渐近]\label{cor:q3-global-asymptotic-v29}
+若完整问题最终全局饱和，则充分高预算下全局解等于上述 $Q=1$ 分支，故式~\eqref{eq:q3-asymptotic-v12}--\eqref{eq:q3-exact-elasticity-v26} 适用于完整问题. 定理~\ref{thm:q3-finite-saturation-iff-v37} 给出充要判据，命题~\ref{thm:q3-sufficient-saturation} 提供可计算的充分预算. 
+\end{corollary}
+\begin{proof}
+由最终饱和有 $Q^*=1$；固定该质量的最优资源对唯一，故两问题的解从某一预算起相同. 
+\end{proof}
+曲率质量模型的点估计给出参数幂指数 $\beta/(\alpha+\beta)\approx0.2552$；常指数质量模型对应的指数约为 $0.2003$. 差异来自两种质量响应设定下重新估计的 $\alpha,\beta$，属于模型形式敏感性，而不是同一参数集上的纯解析差异. 
+
+\textbf{无量纲缩放关系:}
+若 $h(Q)=s_hH(Q)$，置 $m=kn/s_h$，则除去常数 $E$ 并除以正因子 $A(k/s_h)^\alpha$ 后，剖面目标为
+\begin{equation}\label{eq:q3-dimensionless-scaling}
+m^{-\alpha}+\Upsilon\,[m+H(Q)]^\beta e^{g(\ln Q)},
+\quad \Upsilon:=\frac{B_p}{A}c^{-\beta}s_h^{\alpha+\beta}k^{-\alpha}.
+\end{equation}
+故固定模型中对应同一无量纲转移值 $\Upsilon_*$ 的预算分支满足
+\[
+c_*\propto (B_p/A)^{1/\beta}s_h^{(\alpha+\beta)/\beta}k^{-\alpha/\beta}.
+\]
+该缩放关系适用于所指定的转移分支；满足定理~\ref{thm:q3-finite-saturation-iff-v37} 时，首次饱和起点另由上区间结构确定. 
+这是对剖面目标的精确变量代换，而不是新的最优性定理. 
+当前点估计的质量成本倍数弹性为 $3.9188$，$k$ 弹性为 $-2.9188$. 一般联合参数扰动的资源稳定性由命题~\ref{prop:q3-parameter-stability} 控制；该界只适用于活动集不变的同一最优分支，跨质量分支切换必须重新比较. 
+
+\begin{corollary}[最优值的预算灵敏度与影子价格]\label{prop:q3-shadow-price}
+若某预算邻域中最优分支唯一且可微、活动集不变，并满足背景包络命题~\ref{thm:bg-envelope} 的正则条件，则 $V'(c)=-\mu^*(c)$，物理预算下为 $\dd V/\dd C=-\mu^*/10^{18}$. 
+\end{corollary}
+\begin{proof}
+预算约束写作 $d(kn+h)-c\le0$，关于 $c$ 的偏导为 $-1$；将其代入包络公式即可. 
+\end{proof}
+
+\subsection{最优分支稳定性与稳健后悔}
+
+前述结果完成了名义参数下的解析主线. 下面再回答第二问参数估计误差如何传递到第三问决策：先考察活动分支不变时的局部稳定性，再用有限参数情景的最大后悔值处理可能较大的联合扰动. 跨质量分支切换时，局部灵敏度界失效，仍须回到定理~\ref{thm:q3-active-transition} 的完备候选比较. 
+
+\begin{proposition}[固定质量最优分支的参数稳定性]\label{prop:q3-parameter-stability}
+固定预算 $c>0$、上下文系数 $k>0$ 与质量 $Q\in[Q_0,1]$. 为避免正参数的量纲直接影响扰动大小，可将平滑参数记为
+\begin{equation}\label{eq:q3-stability-parameterization}
+\boldsymbol\vartheta
+:=\bigl(\ln A,\ln B_p,\ln\alpha,\ln\beta,\delta,\delta_{\min}\bigr)\in\Omega,
+\end{equation}
+其中 $A,B_p,\alpha,\beta>0$，$0\le\delta,\delta_{\min}\le5\beta$，且
+$\kappa_Q=(\delta-\delta_{\min})/(2u_{\min})$、$u_{\min}=\ln0.1$；$\Omega$ 表示满足这些条件的参数域. 取 $\boldsymbol\vartheta_0,\boldsymbol\vartheta_1\in\Omega$，并假设线段
+$\boldsymbol\vartheta(t)=(1-t)\boldsymbol\vartheta_0+t\boldsymbol\vartheta_1$，$0\le t\le1$，始终位于 $\Omega$. 记定理~\ref{thm:q3-unique-scale} 给出的唯一尺度解为 $x^*(t)$，并定义
+\begin{equation}\label{eq:q3-stability-constants}
+m_x:=\min_{0\le t\le1}\ell_{xx}(x^*(t),Q;\boldsymbol\vartheta(t)),\quad
+L_{\vartheta}:=\max_{0\le t\le1}
+\left\|\nabla_{\boldsymbol\vartheta}\ell_x(x^*(t),Q;\boldsymbol\vartheta(t))\right\|_2.
+\end{equation}
+则 $m_x>0$、$L_{\vartheta}<\infty$，且
+\begin{subequations}
+\begin{align}
+\left|x^*(1)-x^*(0)\right|
+&\le \frac{L_{\vartheta}}{m_x}
+\left\|\boldsymbol\vartheta_1-\boldsymbol\vartheta_0\right\|_2,\label{eq:q3-stability-x}\\
+\left|\ln\frac{n^*(\boldsymbol\vartheta_1)}{n^*(\boldsymbol\vartheta_0)}\right|
+&\le \frac{L_{\vartheta}}{m_x}
+\left\|\boldsymbol\vartheta_1-\boldsymbol\vartheta_0\right\|_2,\label{eq:q3-stability-n}\\
+\left|\ln\frac{d^*(\boldsymbol\vartheta_1)}{d^*(\boldsymbol\vartheta_0)}\right|
+&\le \frac{L_{\vartheta}}{m_x}
+\left\|\boldsymbol\vartheta_1-\boldsymbol\vartheta_0\right\|_2.\label{eq:q3-stability-d}
+\end{align}
+\end{subequations}
+在任一点上令 $M:=\alpha\mathcal L_N=\beta\mathcal L_Dr>0$，则两个最直接的局部灵敏度为
+\begin{equation}\label{eq:q3-stability-AB}
+\frac{\partial x^*}{\partial\ln A}=\frac{M}{\ell_{xx}}>0,
+\quad
+\frac{\partial x^*}{\partial\ln B_p}=-\frac{M}{\ell_{xx}}<0.
+\end{equation}
+若同一参数线段上 $Q$ 始终是完整问题的唯一全局最优质量，则式~\eqref{eq:q3-stability-n}--\eqref{eq:q3-stability-d} 同时给出完整最优资源对的有限扰动界. %若质量活动集或全局最优分支发生切换，则本命题不跨越该切换提供统一界. 
+\end{proposition}
+证明见\ref{app:q3-stability-proof}. 
+
+\begin{corollary}[质量饱和分支的形状参数隔离]\label{cor:q3-saturated-shape-isolation}
+在 $Q=1$ 的约束分支上，若第二问的质量响应满足 $g(0)=0$，则固定质量剖面化为
+\[
+\ell_c(x,1)=E+Ae^{-\alpha x}+B_pc^{-\beta}[ke^x+h(1)]^{\beta},
+\]
+% 这一段疑似没用
+%其中不含 $\delta,\delta_{\min}$ 与 $\kappa_Q$. 因此在 $A,B_p,\alpha,\beta$ 及成本函数固定时，质量形状参数的扰动不会直接改变该饱和分支上的 $(n_1(c),d_1(c))$；它们只通过质量剖面的全局比较影响 $Q=1$ 是否成为或保持完整问题的最优质量. 
+\end{corollary}
+\begin{proof}
+$Q=1$ 时 $\ln Q=0$，故曲率响应 $g(\ln Q)=-\delta\ln Q+\kappa_Q(\ln Q)^2$ 恒为零. 代入剖面目标即可；固定 $Q=1$ 后，尺度方程亦不含上述质量形状参数. 
+\end{proof}
+这两个结果把第二问的联合参数不确定性分成两类：$A,B_p,\alpha,\beta$ 直接扰动同一活动分支内的资源分配，而 $\delta,\delta_{\min},\kappa_Q$ 首先影响质量分支选择和转移位置. 当前 45 个名义配置均位于 $Q=1$，但联合参数重抽样若跨越质量切换边界，仍须使用完备候选集重新作全局比较，不能把局部稳定性界外推到另一分支. 
+
+\begin{definition}[有限参数情景的最大后悔值]\label{def:q3-minimax-regret}
+设 $\Theta=\{\theta_1,\ldots,\theta_M\}$ 为第二问完整联合参数行，所有情景共用同一成本和预算. 记各情景自身最优值为 $V_\theta(c)$，定义同一实际配置的后悔值和稳健问题为
+\begin{equation}\label{eq:q3-regret-v26}
+R_\theta(n,d,Q):=\mathcal L_\theta(n,d,Q)-V_\theta(c),
+\quad \min_{d(kn+h)\le c}\max_{\theta\in\Theta}R_\theta(n,d,Q),
+\end{equation}
+同时要求 $n,d>0,Q\in[Q_0,1]$. 每个情景的比较基准不同，但候选实际资源必须相同. 
+\end{definition}
+
+\begin{lemma}[稳健尺度内层的唯一性及数值误差传递]\label{prop:q3-robust-convex}
+若每个情景满足定理~\ref{thm:q3-unique-scale} 的正参数条件，则固定 $Q$ 的 $\max_\theta\{\ell_{c,\theta}(x,Q)-V_\theta(c)\}$ 严格凸且强制，具有唯一尺度极小点. 若各基准已满足 $V^-_\theta\le V_\theta\le V^+_\theta$，则质量区间下界应使用 $\max_\theta(\ell^-_\theta-V^+_\theta)$，可行点的后悔值上界使用 $\max_\theta(\ell_\theta-V^-_\theta)$. 
+\end{lemma}
+证明见 \ref{app:q3-robust-proof}. 
+
+该定理说明若稳健内层不光滑, 则最优条件为零属于当前活动情景导数的凸包，数值下界通过次梯度支撑线构造；不能对最大值函数直接强行使用单一情景导数. 
+
+\subsubsection{平均后悔与尾部风险的凸扩展}
+
+最大后悔控制最不利单个情景，未直接约束平均代价. 为给这一权衡以明确目标，设情景权重 $\pi_s\ge0$、$\sum_{s=1}^M\pi_s=1$，并记 $R_s(x,Q)=\ell_{c,s}(x,Q)-V_s(c)$. 
+\begin{definition}[有限情景的条件风险价值（CVaR）]\label{def:q3-cvar-v37}
+设 $0<\rho<1$ 为尾部概率，定义
+\begin{equation}\label{eq:q3-cvar-v37}
+\operatorname{CVaR}_{\rho}(R):=
+\min_{t\in\mathbb R}\left\{t+\frac1{\rho}
+\sum_{s=1}^M\pi_s(R_s-t)_+\right\},\quad u_+:=\max\{u,0\}.
+\end{equation}
+其中 $t$ 是尾部阈值；例如 $\rho=0.1$ 表示最差 $10\%$ 情景的平均后悔. 该式是包含离散情景的尾部风险变分表示\cite{rockafellar_cvar}. 取 $0\le\omega\le1$，平均--尾部风险目标定义为
+\[
+(1-\omega)\sum_s\pi_sR_s+\omega\operatorname{CVaR}_{\rho}(R).
+\]
+\end{definition}
+\begin{proposition}[固定质量的平均--尾部风险凸规划]\label{prop:q3-cvar-convex-v37}
+    若各情景满足定理~\ref{thm:q3-unique-scale} 的正参数条件且共用同一成本，固定 $Q$ 后，上述目标的最小化等价于凸规划
+    \begin{equation}\label{eq:q3-cvar-epigraph-v37}
+        \begin{aligned}
+            \min_{x,t,\boldsymbol u}\quad &
+            (1-\omega)\sum_s\pi_sR_s(x,Q)
+            +\omega\left[t+\frac1{\rho}\sum_s\pi_su_s\right],                 \\
+            \text{s.t.}\quad              & u_s\ge R_s(x,Q)-t,\quad u_s\ge0.
+        \end{aligned}
+    \end{equation}
+    还可把平均后悔作为给定上限的凸约束，单独最小化尾部风险. 
+\end{proposition}
+\begin{proof}
+    每个 $R_s$ 是固定质量严格凸目标减去常数，故关于 $x$ 凸. 约束 $R_s(x,Q)-t-u_s\le0$ 为凸上图约束，其余约束仿射；目标为凸函数的非负加权和与线性项之和. 对每个 $s$ 取 $u_s=(R_s-t)_+$ 即得与定义的等价性. 
+\end{proof}
+基准误差满足 $V_s^-\le V_s\le V_s^+$ 时，逐情景有 $\ell_s-V_s^+\le R_s\le\ell_s-V_s^-$；平均与 CVaR 的单调性把这些界传递为风险界. 质量外层仍需全局比较，名义预算单调定理不自动适用于不同参数情景的风险目标. 
+
+\begin{lemma}[平均--CVaR 的质量区间下界]\label{lem:q3-cvar-interval-v38}
+    设各情景共用非降成本 $h$，且各 $g_s(\ln Q)$ 随 $Q$ 非增. 对质量区间 $[a,b]\subseteq[Q_0,1]$，用成本 $h(a)$、质量响应 $g_s(\ln b)$ 代入预算消元后的情景 Loss，记所得函数为 $\ell^-_{c,s}(x;a,b)$. 若 $V_s^-\le V_s\le V_s^+$，则整个区间内平均--CVaR 问题的目标下界为
+    \begin{subequations}\label{eq:q3-cvar-interval-v38}
+      \begin{align}
+        L_{[a,b]}:&=\min_{x\in\mathbb R}\left[(1-\omega)\sum_s\pi_sR_s^-(x)
+        +\omega\operatorname{CVaR}_{1-\rho}({\boldsymbol R^-}(x))\right],\\
+         R_s^-(x):&=\ell^-_{c,s}(x;a,b)-V_s^+.
+        \end{align}
+    \end{subequations}
+    可行点的实际风险上界则用情景 Loss 减去 $V_s^-$ 计算. 
+\end{lemma}
+\begin{proof}
+    对任意 $Q\in[a,b]$ 和尺度 $x$，$h(Q)\ge h(a)$、$g_s(\ln Q)\ge g_s(\ln b)$. 预算消元后，情景数据项对这两量均非降，故 $\ell_{c,s}(x,Q)\ge\ell^-_{c,s}(x;a,b)$；再由 $V_s\le V_s^+$ 得逐情景后悔下界. 非负加权均值与 CVaR 均对逐坐标增大保持非降，最后对 $x$ 取极小即得式~\eqref{eq:q3-cvar-interval-v38}. 上界由 $V_s\ge V_s^-$ 同理得到. 
+\end{proof}
+
+\textbf{数值求解:}
+固定 $Q$ 时，对式~\eqref{eq:q3-cvar-epigraph-v37} 在 $x=\ln n$ 上的凸次梯度作括区二分；质量外层按引理~\ref{lem:q3-cvar-interval-v38} 的最小下界优先分裂区间，并在可行质量点更新上界，直到两界相差不超过容差. 设计情景采用第二问的完整联合参数行，不拆开参数边际取极值. 保存的单情景基准最优值上下界继续传递到风险间隙；以下 8 个求解均在同一实际预算下计算 $d=c/[kn+h(Q)]$. 这些下界含浮点余量，并非采用向外舍入的形式化区间算术. 
+
+%\paragraph{稳健性层的定位. \quad}
+%参数稳定性命题描述同一活动分支内的连续扰动，最大后悔值则比较一组离散联合参数情景；它们连同平均--尾部风险刻画第二问参数不确定性的决策影响. 名义全局单调定理与风险目标具有不同假设，后者的最优质量必须独立比较. 
+
+\subsection{第三问结果与数值验证}\label{sec:q3-results}
+
+\subsubsection{名义配置与支持域}
+在三类成本、五个上下文及 $10^{19},10^{22},10^{24}$ FLOPs 的 45 个主情景中，曲率质量模型的最优解均为 $Q=1$；常指数质量模型则有 42 个上界解和 3 个内点解. 这些是给定模型下的有限预算数值结果，模型形式比较仍需重新估计参数；全局持续性由推论~\ref{cor:q3-persistent-saturation-v37} 与相应假设保证，不能仅由有限情景数量推出. 表~\ref{tab:q3-v26-config} 给出指数成本、8192 Token 的代表配置. 
+\begin{table}[htbp]\centering\small
+    \caption{常指数与曲率质量响应下的最优资源配置}\label{tab:q3-v26-config}
+    \begin{tabular}{lrrrrrr}\toprule
+        预算        & 常指数 $N$ & 曲率 $N$  & 常指数 $D$  & 曲率 $D$   & 常指数 $Q$  & 曲率 $Q$ \\\midrule
+        $10^{19}$ & 2.00064 & 1.82546 & 0.533925 & 0.568340 & 0.991354 & 1      \\
+        $10^{22}$ & 5.75369 & 7.10178 & 210.082  & 172.718  & 1        & 1      \\
+        $10^{24}$ & 12.8925 & 20.7635 & 9791.47  & 6163.27  & 1        & 1      \\\bottomrule
+    \end{tabular}\end{table}
+
+\input{tables/q3_context.tex}
+\input{tables/q3_envelope.tex}
+\input{tables/q3_cost.tex}
+表~\ref{tab:q3-v26-config} 比较常指数质量响应与曲率质量响应下的最优资源配置, 其中 $N$、$D$ 均以十亿为单位. “常指数”列使用该响应形式重新估计得到的 $(\alpha,\beta)=(0.27905,0.06990)$；“曲率”列对应本文主选模型, 其参数为 $(\alpha,\beta)=(0.27905,0.09561)$. 两类模型分别在各自目标函数下求解最优配置, 因此表中重点比较其资源分配结果及结构差异, Loss 数值仅在各自模型内部解释.
+表~\ref{tab:q3-v39-context} 与表~\ref{tab:q3-v39-envelope} 显示 C7 五个上下文的同预算名义解. 在 $10^{22}$ FLOPs 档，上下文从 2048 增至 131072 Token 时，注意力成本份额由 $5.94\%$ 升至 $79.36\%$，$N$ 与 $D$ 同时下降；合并三档预算与五个上下文看（指数质量成本），该份额的完整范围为 $4.97\%$--$80.72\%$. 各档 $Q^*$ 均为 1. 质量饱和判据中的 $n_{\rm env}$ 数值估计由 $1.0004$B 降至 $0.1990$B；它是临界参数量的数值估计，并非首次饱和预算. 固定 $10^{19}$ FLOPs 与 8192 Token 时，三类成本分别给出表~\ref{tab:q3-v39-cost} 的 $(N,D)$；对数质量成本方案的 $N$ 低于指数方案而 $D$ 高于指数方案，但三者都选 $Q=1$. 不同成本函数的名义 Loss 目标口径不同，不能仅比较各行 Loss 数值而判定处理技术优劣. 
+
+本节全部配置取自第二问式~\eqref{eq:q2-v26-parameters} 的曲率响应与同表常指数响应两套并列拟合，二者共享同一资源与成本结构，仅质量响应形式不同. 命题~\ref{prop:q2-shape} 保证曲率响应在 $[Q_0,1]$ 上单调，定理~\ref{thm:q3-unique-scale} 与定理~\ref{thm:q3-global-monotonicity-v37} 的全局结论对两套响应同时成立. 图~\ref{fig:q3-v26-config} 展示各成本下的配置变化. 不同质量响应模型具有不同的目标函数，因此其最优 Loss 不能直接作收益差；该图注给出同一对策略在两种模型口径下的交叉评价数值，说明资源选择对质量响应形式敏感. 曲率模型内部，允许优化质量相对固定 $Q_0$ 的 Loss 改善为 $3.49\%$--$5.28\%$，该数值只解释为给定模型内扩大决策空间的收益. 
+\begin{figure}[htbp]\centering
+    \includegraphics[width=0.94\linewidth]{q3_v26_configuration_comparison.pdf}
+    \caption{常指数与曲率质量响应下的最优参数量与数据量. 所有方案均在各自模型和同一成本预算下求解.}\label{fig:q3-v26-config}
+\end{figure}
+B6 支持域为 $N\in[0.07,11.97]$B、$D\in[10,600]$B、$Q\in[0.1,1]$. 按支持域逐情景核对，$10^{19}$ 档数据量全部低于下界（$D$ 落在 $[10,600]$ 内的情景数为 $0/15$，实际区间 $0.278$--$1.034$B），但参数规模全部在范围内（$15/15$）；$10^{24}$ 档数据量全部高于上界（$0/15$，实际区间 $2207$--$7422$B），参数规模也\textbf{全部}高于上界（$0/15$，实际区间 $13.68$--$22.10$B）；只有 $10^{22}$ 档的 $N$ 与 $D$ 全部落在支持域内（各 $15/15$）. 因此三档之中只有中间档是数据支持域内的内插结果，两端均为模型外推. $Q=1$ 只表示模型变量达到上限，不表示现实语料达到完美质量. 
+
+\textbf{数据--参数配比的健全性核对}
+支持域之外还需核对解本身是否符合已知的训练实践量级. 把名义最优解写成 token/参数比 $D^*/N^*$，表~\ref{tab:q3-v41-dn-ratio} 给出与外部量级的对照. 
+
+\begin{table}[htbp]\centering\small
+    \caption{名义最优解的数据--参数比 $D^*/N^*$（token/参数）与外部量级的对照}\label{tab:q3-v41-dn-ratio}
+    \begin{tabular}{lrrrr}\toprule
+        预算        & $D^*/N^*$ & 经典算力最优 $\approx20$ & B1 真实轨迹 $97.3$ & 量级判断        \\\midrule
+        $10^{19}$ & $0.311$   & 低约 $64$ 倍          & 低约 $313$ 倍     & 数据严重不足，不可执行 \\
+        $10^{22}$ & $24.3$    & 同量级                & 低约 $4$ 倍       & 与经典算力最优一致   \\
+        $10^{24}$ & $296.8$   & 高约 $15$ 倍          & 高约 $3.1$ 倍     & 数据相对过剩      \\
+        \bottomrule\end{tabular}\end{table}
+        
+表~\ref{tab:q3-v41-dn-ratio} 比较名义最优解的数据–参数比 $D^*/N^*$ 与外部参考量级, 其中单位为 token/参数. 计算采用 $L_{\mathrm{ctx}}=8192$、指数质量成本和曲率质量响应. 本表的 $D^*/N^*$ 与表~\ref{tab:q3-v41-transfer} 中的 $N^*/D^*$ 互为倒数. 经典参考取 $D/N\approx20$, “B1 真实轨迹”则采用本文 B1 Pythia 日志中 $D/N$ 的中位数 $97.3$.
+$10^{19}$ 档建议以 $1.83$B 参数只配 $5.68$ 亿 token，而同预算下的经典算力最优解约为 $D/N\approx20$（Hoffmann 等给出 $N\approx1.7$B、$D\approx36$B），本文 B1 真实 Pythia 轨迹的 $D/N$ 中位数为 $97.3$. 该差异的来源在第~\ref{sec:q3-exponent-source} 节报告：B6 半合成表估计的 $\beta=0.0956$ 远小于真实轨迹的 $0.2799$，使数据项的边际收益被显著低估，最优解因而把资源集中到参数规模与质量上界. 因此\textbf{$10^{19}$ 档的 $(N^*,D^*)$ 不应被解释为可执行的训练配方}，只应解释为“在该半合成响应面下数据相对便宜”这一模型内部推断；三档之中只有 $10^{22}$ 档（$D/N=24.3$）与经典算力最优量级一致，$10^{24}$ 档则相反地落在数据相对过剩一侧. 
+
+\textbf{结构变化的具体构成} 既然三档预算之间不存在质量维度转移，需要回答的是这段时间里\textbf{发生了哪一种结构变化}. 把 $d[kn+h(Q)]=c$ 的三项分别除以预算，得到三类成本的份额，连同最优配置的预算弹性一并列入表~\ref{tab:q3-v41-transfer}. 三档预算下质量份额由 $20.75\%$ 单调降至 $6.31\%$ 与 $2.25\%$，训练份额相应上升. 在 $L_{\mathrm{ctx}}=8192$ 下注意力份额基本稳定；若把 C7 的五个可行取值一并计入，注意力份额则大幅变动（表~\ref{tab:q3-v39-context}），说明它是上下文维度而非预算维度的主导项. 因此该区间的结构变化是\textbf{质量开支的系统性退出}，而不是质量水平的提升或下降：$Q^*$ 始终为 $1$，改变的是为维持该上界所付出的相对代价. 最优配置的预算弹性与推论~\ref{cor:q3-global-asymptotic-v29} 给出的极限 $(\beta/(\alpha+\beta),\alpha/(\alpha+\beta))=(0.2552,0.7448)$ 方向一致，数据量弹性在全部情景下都明显高于参数量弹性；逐档弹性见表~\ref{tab:q3-v41-transfer}. 
+
+\begin{table}[htbp]\centering\small
+    \caption{三档预算下最优配置的成本份额与预算弹性}\label{tab:q3-v41-transfer}
+    \begin{tabular}{llrrrrrr}\toprule
+        质量成本 & 预算        & 训练份额      & 注意力份额     & 质量份额               & $N/D$     & $\mathrm{d}\ln N/\mathrm{d}\ln c$ & $\mathrm{d}\ln D/\mathrm{d}\ln c$ \\\midrule
+        指数   & $10^{19}$ & $62.25\%$ & $17.00\%$ & $\mathbf{20.75\%}$ & $3.212$   & $0.197$                           & $0.828$                           \\
+        指数   & $10^{22}$ & $73.60\%$ & $20.10\%$ & $\mathbf{6.31\%}$  & $0.0411$  & $0.233$                           & $0.776$                           \\
+        指数   & $10^{24}$ & $76.78\%$ & $20.97\%$ & $\mathbf{2.25\%}$  & $0.00337$ & ---                               & ---                               \\
+        幂函数  & $10^{19}$ & $60.78\%$ & $16.60\%$ & $22.62\%$          & $3.692$   & $0.192$                           & $0.835$                           \\
+        幂函数  & $10^{22}$ & $72.88\%$ & $19.90\%$ & $7.22\%$           & $0.0435$  & $0.230$                           & $0.781$                           \\
+        对数   & $10^{19}$ & $72.06\%$ & $19.68\%$ & $8.27\%$           & $1.369$   & $0.231$                           & $0.779$                           \\
+        对数   & $10^{22}$ & $77.14\%$ & $21.07\%$ & $1.79\%$           & $0.0313$  & $0.249$                           & $0.754$                           \\
+        \bottomrule\end{tabular}\end{table}
+表~\ref{tab:q3-v41-transfer} 给出三档预算下的最优配置、成本份额与预算弹性. 计算采用 $L_{\mathrm{ctx}}=8192$、曲率质量响应及 $Q_0=0.607474$. 其中, 成本份额表示各成本项占总预算的比例, 预算弹性采用相邻预算档之间的对数差分计算.
+
+\textbf{预算区间内的结构变化:} 需要区分最优质量水平的转移与成本结构的转移. 对名义曲率模型，8192 Token 下指数质量成本的首次全局饱和预算约为 $6.05\times10^{16}$ FLOPs，低于题目给定的最低预算 $10^{19}$ FLOPs. 因此在 $10^{19}\to10^{22}\to10^{24}$ FLOPs 的三档预算中，最优质量始终为 $Q^*=1$，没有发生质量维度的再次切换.
+
+但质量处理成本的预算占比由 $10^{19}$ FLOPs 时的 $20.75\%$ 降至 $10^{22}$ 和 $10^{24}$ FLOPs 时的 $6.31\%$ 和 $2.25\%$，并在两档之间跌破 $10\%$. 因此，三档预算之间虽然没有最优质量水平的转移，却发生了明显的成本结构变化：质量处理从重要开支项逐渐退化为边际开支项.
+
+近优剖面进一步刻画最优决策的不敏感范围. 在 $10^{19}$ FLOPs、8192 Token、指数成本下，允许绝对 Loss 恶化 $0.001$，逐质量重优化规模得到数值质量区间 $[0.994042,1]$；固定 $Q=1$ 时，参数规模区间为 $[1.546449,2.160025]$B. 前者来自 161 点括区加细化，后者利用固定质量的凸剖面. 这是两个不同的一维近优集合，不是统计置信区间，不能拼成联合可行矩形.
+
+
+\textbf{配比迁移的条件敏感性:}
+第二问的 $\lambda_{\rm mix}$ 在锚点数据上不可识别. 固定第 239 行配方的 $\psi=-0.00644$、指数成本和 $10^{19}$ FLOPs，分别给定 $\lambda_{\rm mix}=0,1,2$ 并重新求名义解，得到表~\ref{tab:q3-v39-mix}. 配比差值进入 $B_p=B\exp(\beta\lambda_{\rm mix}\psi)$，故它改变 Loss 和最优资源比，但表列变化是条件情景，不是 B6 对配比收益的验证. 
+
+现在我们直接回答“配比能否联立优化”的问题：$\lambda_{\rm mix}$ 由 $0$ 增至 $2$ 时 Loss 由 $2.998659$ 单调降至 $2.996589$，相对变化 $0.069\%$；最优参数量由 $1.8255$B 增至 $1.8295$B（$+0.22\%$），数据量由 $0.5683$B 降至 $0.5674$B（$-0.17\%$），最优质量始终为 $1$. 与该量级相比，第二问质量项的模型内 Loss 改善为 $0.0197$--$0.0308$，第一问配比响应面在 1M 检验集上的相对预测误差（宏平均 RMSE 相对目标均值）约为 $4.2\%$. 也就是说，在附件可支持的 $\psi$ 量级（$|\psi|=0.0064$）上，配比项所能引起的 Loss 变化比响应面自身的预测误差小约 $60$ 倍，也比质量项的收益小一个数量级以上. 因此\textbf{在本附件的数据条件下，把配比作为 $N,D,Q$ 之外的联立决策变量没有可识别的收益}；第一问的命题~\ref{prop:q1-quality-collinearity-v15} 已说明配比与质量系数不能分别识别，此处进一步说明即便给定 $\lambda_{\rm mix}$，其影响也远小于质量项. $\lambda_{\rm mix}$ 更大（例如 $|\lambda_{\rm mix}\psi|\geq 0.1$）时该结论不成立，需重新求解. 
+\input{tables/q3_mix.tex}
+表~\ref{tab:q3-v39-mix} 比较第 239 行配方相对锚点配方的条件迁移敏感性. 计算采用 $C=10^{19}$ FLOPs、指数质量成本和 $L_{\mathrm{ctx}}=8192$, 其中 $N,D$ 均以 $\text{B}$ 为单位.
+\subsubsection{最大后悔值改善及其平均代价}
+稳健设计使用 200 行完整曲率参数，并另构造 200 次完整 $(N,D)$ 单元的独立联合重抽样以评价样本扰动敏感性；常指数参数抽样单独用于模型形式敏感性. 表~\ref{tab:q3-v26-regret} 先在每个情景内计算相对下降，再取 18 个情景的中位数；负数表示变差，最坏 $10\%$ 均值为每组 200 个后悔值中最大的 20 个的均值. 
+\begin{table}[htbp]\centering\small
+    \caption{稳健策略相对名义策略的后悔值下降(18 个情景的中位数)}\label{tab:q3-v26-regret}
+    \begin{tabular}{lrrrr}\toprule
+        参数评价集      & 最大值     & 平均值        & 最坏 $10\%$ 均值 & 最大值改善 \\\midrule
+        设计抽样（曲率）   & 29.48\% & $-9.32\%$  & $-4.84\%$    & 18/18 \\
+        独立重抽样（曲率）  & 24.45\% & $-16.17\%$ & $-14.46\%$   & 18/18 \\
+        形式敏感性（常指数） & 25.87\% & 20.95\%    & 18.78\%      & 18/18 \\\bottomrule
+    \end{tabular}\end{table}
+稳健配置控制最大后悔值，但新曲率重抽样的平均及尾部均值反而增大，故不构成所有风险指标上的一致优势. 图~\ref{fig:q3-v26-regret} 报出最坏端收益；名义代价见附录~\ref{app:v39-algorithms} 的图~\ref{fig:q3-v26-cost}；可行插值策略的折中曲线不是已证明完整的 Pareto 前沿. 
+\begin{figure}[htbp]\centering
+    \includegraphics[width=0.93\linewidth]{q3_v26_regret_tradeoff_across_scenarios.pdf}
+    \caption{稳健策略在设计参数、独立重抽样及模型形式敏感性中的后悔值折中. }\label{fig:q3-v26-regret}
+\end{figure}
+
+若质量处理成本加倍并保持原实际 $(N,D,Q)$ 不变，预算利用率为 $1.0064$--$1.2438$，全部超预算. 因此不允许按每个成本情景暗中重算 $D$ 来声称共同可行. 成本减半、加倍后另求的 36 个变成本配置均可行（$2$ 档预算、$3$ 个上下文、$3$ 类成本，减半与加倍各 $18$ 个）；它们是成本确定后分别可选的方案. 
+
+\textbf{质量基线口径的敏感性:}\label{par:q3-quality-baseline} 假设 H6 的第 (iii) 点指出一个尚未闭合的口径链：质量处理代价按 Token 计量，而 $Q_0$ 取自文档等权均值. 把基线换成锚点的词数加权对应值 $Q_0^{\mathrm{tok}}=0.6617$（与文档等权值相差 $8.9\%$）后重解，结果见表~\ref{tab:q3-v41-q0}. 三档预算下最优质量均为 $1$，$N$ 的变化不超过 $1.35\%$、$D$ 不超过 $1.95\%$；由于 $g_s(0)=0$ 且成本基准 $h(Q_0)$ 在作差中消去，基线的绝对水平对名义配置的影响很小. 但数值饱和预算由 $6.05\times10^{16}$ 变为 $8.19\times10^{16}$ FLOPs，变化约 $35\%$. 因此口径选择不影响“三档预算均饱和”这一结论（两值都远低于 $10^{19}$），却会按同一比例平移转移点的位置；5.6.4 节报告的全部转移预算都应按此比例理解为口径相关的量. 
+\begin{table}[htbp]\centering\small
+    \caption{质量基线口径对第三问结果的影响($L_{\mathrm{ctx}}=8192$)}\label{tab:q3-v41-q0}
+    \begin{tabular}{lrrrrr}\toprule
+        基线                & 预算                                           & $N$（B）                                       & $D$（B）      & $Q^*$ & 质量份额       \\\midrule
+        文档等权 $Q_0=0.6075$ & $10^{19}$                                    & $1.8255$                                     & $0.5683$    & $1$   & $20.75\%$  \\
+        词数加权 $0.6617$     & $10^{19}$                                    & $1.8008$                                     & $0.5794$    & $1$   & $20.30\%$  \\
+        相对变化              &                                              & $-1.35\%$                                    & $+1.95\%$   & ---   & $-0.45$ pp \\\midrule
+        文档等权 $Q_0=0.6075$ & $10^{22}$                                    & $7.1018$                                     & $172.7182$  & $1$   & $6.31\%$   \\
+        词数加权 $0.6617$     & $10^{22}$                                    & $7.0639$                                     & $174.0310$  & $1$   & $6.10\%$   \\
+        相对变化              &                                              & $-0.53\%$                                    & $+0.76\%$   & ---   & $-0.21$ pp \\\midrule
+        文档等权 $Q_0=0.6075$ & $10^{24}$                                    & $20.7635$                                    & $6163.2677$ & $1$   & $2.25\%$   \\
+        词数加权 $0.6617$     & $10^{24}$                                    & $20.7204$                                    & $6181.4311$ & $1$   & $2.17\%$   \\
+        相对变化              &                                              & $-0.21\%$                                    & $+0.29\%$   & ---   & $-0.08$ pp \\\midrule
+        数值饱和预算（FLOPs）     & \multicolumn{2}{r}{文档等权 $6.05\times10^{16}$} & \multicolumn{2}{r}{词数加权 $8.19\times10^{16}$} & $+35\%$                          \\\bottomrule
+    \end{tabular}\end{table}
+
+\subsubsection{平均--CVaR 配置的求解与第二组重抽样}\label{sec:q3-cvar-results-v38}
+取尾部概率 $\rho=0.1$、200 行 B6 完整单元联合参数设计抽样，分别在三种质量成本、$C=10^{19},10^{22}$ FLOPs 和 $L_{\rm ctx}=8192$ 下求 $\omega=0.5$ 的平均--CVaR 配置；对低预算幂成本再求 $\omega=0$ 与 $1$，总计 8 次全局质量搜索. 风险目标的最大数值上下界差为 $1.97913\times10^{-6}$，200 个情景基准最优值的最大数值差为 $1.43783\times10^{-11}$，合并后不超过 $1.97915\times10^{-6}$；最大预算相对残差为数值零. 另把每组保存的情景后悔输入独立的 $t,u_s$ 线性规划，所得 CVaR 与排序尾部公式最大差为 $5.99\times10^{-17}$. %上述均是浮点核查，不等同形式化精度证书；各量均在 $10^{-6}$ 量级或以下. 
+
+在设计参数上，六个 $\omega=0.5$ 配置的加权目标均低于对应的冻结名义与最大后悔配置. 评价时改用第二组 200 个完整资源单元的联合重抽样；仍以各情景自身最优值为基准，表~\ref{tab:q3-cvar-evaluation-v38} 报告相对冻结名义配置的差值，正数为变差. 
+\begin{table}[htbp]\centering\small
+    \caption{新平均--CVaR 配置相对名义配置的第二组重抽样后悔差(单位为 $10^{-5}$ Loss)}\label{tab:q3-cvar-evaluation-v38}
+    \begin{tabular}{llrr}\toprule
+        预算/FLOPs  & 质量成本 & 平均后悔差   & $\operatorname{CVaR}_{0.9}$ 差 \\\midrule
+        $10^{19}$ & 指数   & $+1.96$ & $+6.65$                       \\
+        $10^{19}$ & 幂函数  & $+1.95$ & $+5.76$                       \\
+        $10^{19}$ & 对数   & $+2.90$ & $+11.11$                      \\
+        $10^{22}$ & 指数   & $+0.97$ & $-4.10$                       \\
+        $10^{22}$ & 幂函数  & $+0.82$ & $-4.49$                       \\
+        $10^{22}$ & 对数   & $+1.93$ & $-2.10$                       \\\bottomrule
+    \end{tabular}
+\end{table}
+六组评价平均后悔差均为正；低预算尾部差也为正，高预算尾部差为负. 将同一组 200 个评价情景成对重抽样 5000 次，上述六组平均差与六组尾部差的描述性 $95\%$ 分位区间均跨过零. 附录~\ref{app:v39-algorithms} 的图~\ref{fig:q3-cvar-evaluation-v38} 展示低预算幂成本的五种配置：名义方案在这组评价参数上的平均与尾部后悔均低于新风险配置. 风险目标的设计端改善因此不能写成已验证的评价收益；两组参数抽样虽然分开，仍取自同一 B6 半合成表，不是新的真实模型训练实验. 
+
+
+\subsubsection{局部触边、全局数值转移与充分界}
+\begin{table}[htbp]\centering\small
+    \caption{8192 Token 下的质量饱和预算（FLOPs）}\label{tab:q3-transition-v8}
+    \begin{tabular}{lrrr}\toprule
+        成本  & 局部边界候选                  & 全局数值转移                  & 高预算充分界                  \\\midrule
+        指数  & $6.048404\times10^{16}$ & $6.048404\times10^{16}$ & $1.905752\times10^{20}$ \\
+        幂函数 & $6.577382\times10^{14}$ & $5.104194\times10^{15}$ & $9.020844\times10^{19}$ \\
+        对数  & 无正候选                    & $1.013163\times10^{13}$ & $4.221165\times10^{16}$ \\\bottomrule
+    \end{tabular}\end{table}
+表~\ref{tab:q3-transition-v8} 区分局部候选、数值切换与充分界，图~\ref{fig:q3-v26-transition} 对照两种质量模型的全局数值转移. 局部边界候选列由引理~\ref{lem:q3-fixed-quality-threshold} 在 $Q=1$ 处的显式公式~\eqref{eq:q3-local-threshold} 给出：指数与幂成本分别存在唯一正的局部阈值，而对数成本满足 $m(1)\le0$，因而不存在正的局部候选. 全局数值转移仍需在完备质量候选之间比较；幂成本的局部触边不等于全局切换，对数成本则可在没有局部触边候选的情况下发生全局分支跳跃. 推论~\ref{cor:q3-saturation-upper-interval-v37} 已在当前名义模型满足的条件下证明饱和集合具有唯一上区间起点；表中数值仍是有限扩展扫描与细化所得的近似定位，尚非该起点的形式化区间证书. 保守充分界通常远大于数值切换，质量跳跃也不违反全局单调性. 
+
+\textbf{对题目三档预算的直接回答:}
+在当前曲率质量响应下，8192 Token 的指数质量成本首次全局数值饱和约为 $6.048404\times10^{16}$ FLOPs，低于题目三档预算的最低值 $10^{19}$. 因而 $10^{19}\to10^{22}\to10^{24}$ FLOPs 的名义配置均保持 $Q^*=1$，主要改变 $N,D$ 与成本份额，质量维度在这三档之间没有再次转移. 表~\ref{tab:q3-v26-config} 给出指数成本下 $N:1.825\to7.102\to20.764$B、$D:0.568\to172.718\to6163.27$B. 
+
+这一条件答案还可用归档的联合参数扰动直接核对. 对 200 行 B6 曲率模型的完整联合抽样，在五个 C7 上下文、三档预算和指数质量成本下逐一重解全局质量问题，共 $200\times5\times3=3000$ 个配置均有 $Q^*=1$，最大报告目标上下界差为 $1.53\times10^{-11}$. 在 8192 Token 下，200 个\textbf{局部边界候选}预算的中位数、$95\%$ 分位及最大值依次为 $4.04\times10^{16}$、$6.13\times10^{17}$、$3.10\times10^{18}$ FLOPs；五个上下文的局部候选最大值依次为 $4.20,3.77,3.10,1.32,0.261\times10^{18}$ FLOPs. 局部候选不被当作逐次全局切换点；上述 3000 次逐情景全局重解才是三档饱和的数值证据. 命题~\ref{prop:q2-shape} 的上界在名义拟合和这 200 次联合抽样均未激活：$\delta/(5\beta)$ 的抽样范围为 $[0.411,0.556]$、触边 $0/200$. 这些是同一半合成来源内的参数稳健性，不消除下文质量响应形式与规模指数来源造成的结构差异. %逐次配置和输入摘要见 \path{data/reports/review_v44/}. 
+
+\textbf{该结论有两重条件，必须与结论本身一起引用: }
+第一重是质量响应形式：改用常指数质量响应后首次转移约为 $1.3559\times10^{19}$ FLOPs，落在题目区间内，``是否存在观察区间内的质量转移"依赖质量响应形式. 
+第二重是指数来源：第~\ref{sec:q3-exponent-source} 节的 S1 与 S2 情景把规模指数换成真实轨迹的估计值后，$10^{19}$ 档最优质量退回下界 $Q_0$，转移同样重新落在区间内. 
+
+因此本文对题目第五段（结构性转移）给出的答案是\textbf{条件答案}：在 B6 半合成表估计的指数与曲率响应这一组合下不存在区间内转移，在另外三类设定下均存在；判定的分歧只能靠 B6 支持域之外的、同时含 $N,D,Q$ 的真实观测来消除. 
+此外低、高预算的数据量超出 B6 支持域（表~\ref{tab:q3-v41-dn-ratio} 与第~\ref{sec:q3-results} 节的支持域核对），最低档解的数据--参数比仅 $0.311$ token/参数，这些配置应作为模型外推结果. 
+\textbf{下包络阈值的直接核查:}
+对归档的五种上下文和三类成本，共 15 组预算轨迹、615 个预算点，程序逐组检查全局最优 $N$ 与 $Q$ 随预算非降，并在 8192 Token 的三类成本转移附近另作 15 次质量全局搜索；新搜索的最大目标间隙为 $2.28932\times10^{-7}$、最大预算相对残差为 $2.22\times10^{-16}$. 式~\eqref{eq:q3-envelope-explicit-bound-v38} 在 15 组均给出有限上界. 8192 Token 时，指数、幂函数、对数成本的 $n_{\rm env}$ 数值估计分别为 $0.8394,0.5231,0.0604$B，解析保守上界分别为 $2.4013,1.9841,0.2804$B. 前一组三个值是连续质量割线比的浮点最大化估计，不是精确上确界；后一组只保证在本模型条件下阈值有限，也不等于首次全局饱和的预算. 
+\begin{figure}[htbp]\centering
+    \includegraphics[width=0.92\linewidth]{q3_v26_transition_model_sensitivity.pdf}
+    \caption{不同上下文下两种质量模型的全局数值转移预算.}\label{fig:q3-v26-transition}
+\end{figure}
+在该上下文与指数成本下，常指数模型的全局数值转移约为 $1.3559\times10^{19}$ FLOPs，而曲率模型约为 $6.0484\times10^{16}$，相差超过两个数量级. %曲率模型对应的转移位于经验数据量支持域之外，因此主要用于刻画模型结构敏感性；局部候选或充分界的参数抽样分位也不能解释为全局首次转移的统计置信区间. 
+
+定理~\ref{thm:q3-unique-scale} 将固定质量问题化为唯一尺度分支，定理~\ref{thm:q3-active-transition} 再把完整问题缩减为端点与内部驻点构成的完备候选集；稳健情景则由命题~\ref{prop:q3-robust-convex} 控制最大后悔值. 数值求解仅用于比较这些解析候选及给出有限区间上的全局上下界；全部报告配置（45 个名义配置、18 个基准成本稳健配置及 36 个变成本配置）的目标间隙与预算相对残差均不超过 $10^{-6}$. 这些误差量说明数值结果与解析目标一致，但不改变 B6 半合成质量机制的证据等级. 
+
+\subsubsection{规模指数来源的敏感性}\label{sec:q3-exponent-source}
+% 这一段或许需要重新考虑表达
+前述名义结果的目标函数系数 $(E,A,B,\alpha,\beta,\delta,\kappa_Q)$ 全部来自 B6 半合成表. 
+同一论文用真实 Pythia 轨迹（B1）独立估出经典分支的 $(E,\alpha,\beta)=(1.68980,0.33998,0.27988)$，
+而 B6 给出 $(0.86005,0.27905,0.09561)$. 两组参数的截距相差 $0.830$ nat；在名义 $10^{19}$ 档配置
+$(n,d)=(1.8255,0.5683)$ 上，B6 口径给出 $\mathcal L=2.9987$，B1 口径给出 $\mathcal L=3.4311$，
+即\textbf{同一配置下相差 $0.432$ nat}. 为避免把该损失误读为真实交叉熵水平，此处明确：第三问报告的损失只有同一模型内的相对意义，
+不能与真实交叉熵水平直接比较. 规模指数的差异更具实质影响：
+$\beta/(\alpha+\beta)$ 由 $0.2552$ 变为 $0.4515$，而该比值正是高预算下最优参数量的主导幂指数. 
+
+为量化这一影响，本文构造两个条件情景并重解三档预算下的名义问题（$L_{\mathrm{ctx}}=8192$，指数质量成本）：
+\textbf{S1} 只把 $(\alpha,\beta)$ 换成 B1 的估计值、其余参数保持 B6；
+\textbf{S2} 把整个经典 $N$--$D$ 分支换成 B1 的 $(E,A,B,\alpha,\beta)$，质量响应仍取 B6（B1 不含质量维度）. 
+两情景都只是参数来源的情景替换，不是对 B1 的重新拟合，也不是新的数据证据. 结果见表~\ref{tab:q3-exponent-source}. 
+
+\begin{table}[htbp]\centering\footnotesize
+    \setlength{\tabcolsep}{5pt}
+    \caption{规模指数来源对名义最优配置的影响}\label{tab:q3-exponent-source}
+    \setlength{\tabcolsep}{3pt}
+    \begin{tabular}{llrrrr}\toprule
+        情景          & 预算        & $N^*$    & $D^*$     & $Q^*$    & 质量份额      \\\midrule
+        S0 名义（全 B6） & $10^{19}$ & $1.825$  & $0.568$   & $1$      & $20.75\%$ \\
+                    & $10^{22}$ & $7.102$  & $172.718$ & $1$      & $6.31\%$  \\
+                    & $10^{24}$ & $20.764$ & $6163.27$ & $1$      & $2.25\%$  \\\midrule
+        S1 仅换规模指数   & $10^{19}$ & $0.229$  & $5.721$   & $0.6075$ & $0$       \\
+                    & $10^{22}$ & $6.621$  & $184.421$ & $1$      & $6.73\%$  \\
+                    & $10^{24}$ & $49.390$ & $2625.28$ & $1$      & $0.96\%$  \\\midrule
+        S2 真实轨迹分支   & $10^{19}$ & $0.173$  & $7.551$   & $0.6075$ & $0$       \\
+                    & $10^{22}$ & $5.130$  & $233.442$ & $1$      & $8.52\%$  \\
+                    & $10^{24}$ & $37.549$ & $3442.74$ & $1$      & $1.26\%$  \\\bottomrule
+    \end{tabular}
+\end{table}
+表~\ref{tab:q3-exponent-source} 比较不同规模指数来源下的名义最优配置. 计算采用 $L_{\mathrm{ctx}}=8192$ 和指数质量成本, 预算单位为 FLOPs, $N,D$ 均以 $\text{B}$ 为单位. 三种情景分别依据各自的损失口径求解, 因而重点比较最优资源配置及其结构变化.
+与名义结果最关键的差异出现在最低档预算：S1 与 S2 的最优质量都退到下界 $Q_0$（质量份额为零），
+而 $10^{22}$ 与 $10^{24}$ 两档仍取上界 $Q^*=1$. 也就是说，\textbf{在真实轨迹估计的规模指数下，
+    质量维度的转移重新出现在题目要求的三档预算之内}，其位置在 $10^{19}$ 与 $10^{22}$ 之间；
+名义模型的"三档之间不存在质量维度转移"因此是\textbf{以 B6 半合成表估计的指数为条件}的结论，
+而非模型无关的结论. 参数量方向也随指数来源改变：最低档最优参数量下降约一个数量级，
+最高档则近似翻倍（逐档数值见表~\ref{tab:q3-exponent-source}）. 
+质量份额的退出序列（表~\ref{tab:q3-v41-transfer}）同样只在 S0 下成立. 
+
+需要强调的是，S1 与 S2 都保留 B6 的质量响应 $g$ 与成本 $h$，而 B6 的 $(\alpha,\beta)$ 与 $g$ 是联合估计的，故这两个情景不能解释为"真实系统的配置"，只能说明名义结论对指数来源的依赖强度. 在同时含 $N$、$D$、$Q$ 的真实训练数据出现之前，本文不据此替换名义主结果， 但把"转移是否存在"的判定改为条件表述，并在摘要与结论中并列两种答案. 上述情景是参数来源的情景替换，不是新的数据证据. 
+%上述情景的逐配置数值与预算残差见 \path{data/reports/rechecks/q3_exponent_source_sensitivity.csv}. 
+
+\textbf{第三问输出与跨问接口:}
+第三问以曲率质量模型的名义配置作为主结果，最大后悔与平均--CVaR 配置用于展示不同风险目标的代价. 新风险配置已经求解，但第二组同源重抽样未确认稳定收益，故不替换名义配置. 第四问只传递经过完整质量剖面比较后的训练分量 $C_{\mathrm{train}}=6ND$ 及其联合参数不确定性；Benchmark 能力仍在第四问中独立建模. 

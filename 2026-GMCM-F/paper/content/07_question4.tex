@@ -1,0 +1,602 @@
+\section{问题四：技术演进与能力前沿}\label{sec:q4}
+
+
+前三问主要以验证 Loss为目标，第四问则转向 \textbf{Benchmark} 能力分析. 本文先统一综合能力的计算口径再利用 C3 和 C8 检查历史记录，并核对各项任务的评分尺度. 在此基础上，本文研究模型规模与时间的变化关系，并分析 Loss 与 Benchmark 之间的关系. 使用条件高分位数表示能力前沿，后通过\textbf{有序凸规划}估计该前沿，并通过历史截点回测和有限样本校准检查模型的适用范围. 随后，把第三问得到的可比训练 FLOPs 路径接入第四问，并计算未来 12 个月和 24 个月的条件预测结果. Loss 与 Benchmark 存在联系，但两者并不等价. 因此，本文只把二者之间的关系用于相同口径下的比较和检查.
+
+\subsection{历史截断与一致性计}
+能力分数的时间轴采用 C1 的提交日期 \texttt{Submission Date}, C4 中模型身份、参数量、许可证和开源权重等信息的可得性则按发布日期 \texttt{Publication date} 截断. 由于 C1 无统一的版本日期字段, 故不采用版本日期作为时间依据. 历史截点的身份匹配仅使用当时已有的信息, 后续仓库中新增的别名不用于反向追溯历史记录的模型身份，以保持历史时间点上的身份判定口径一致. C4 的 3523 条元数据构成当前可用的统一整理的数据版本, 且记录修改时间均晚于预测起点. C8 共包含 1958 个版本文件, 其中 4 个为无效文件. 对每个历史截点, 取该时点之前最近的可解析版本. 本文进一步逐项重建 C8 的随机基线归一化与任务汇总, 用于检查不同记录在统一能力标尺下的可比性. C3 的历史层与重复排行榜层分别进行审计, 未经证实的零值不纳入统一六任务回归.
+
+\subsection{综合能力标尺与评测口径重建}
+
+第四问首先确定预测目标和评分口径，并沿用 C1 中六项任务的完整平均分作为综合能力指标。利用 C3 检查历史层与排行榜层的一致性，并利用 C8 校正随机猜测基线后统一各项任务的评分尺度。不同的度量方法可能改变能力曲线，也可能影响表观跃迁的判断\cite{schaeffer_mirage}。因此，必须统一六项任务的评分口径，再分析能力的时间变化和能力前沿。
+
+本文以 C1 中 IFEval、BBH、MATH Lvl 5、GPQA、MUSR 和 MMLU-PRO 六项完整成绩的算术均值定义综合能力 $S_i\in[0,100]$. 重新计算所得均值与 C1 官方平均分之间的最大绝对误差为 $1.42\times10^{-14}$, 说明两者在数值精度范围内一致. C1 共包含 4576 条原始记录, 经过许可证筛选、有效性检查和去重后, 得到 1708 条用于观察性分解的样本. 在此基础上，进一步按照开放权重与模型身份一致性进行筛选，最终得到 33 条严格前沿样本. 三个样本集合依次嵌套,严格前沿样本来自 18 个发布组织, 其中预训练模型 22 条, 后训练模型 11 条. 严格身份匹配要求完整 owner/path，或发布者及模型版本词元均一致；仅 basename 相同的条目不能合并使用，将C1/C4 参数量相对差超过 $10\%$ 的匹配排除. 同仓库同日若类型、许可证、参数量或六项成绩相冲突，则不按较高分挑选版本. 
+
+\subsubsection{开源筛选口径:}按题目要求明确入选规则，严格前沿样本依次施加四项条件：
+\begin{enumerate}[label=\textbf{(\roman*)},leftmargin=*,itemsep=0pt,topsep=0pt]
+\item \textbf{开源权重:} 须与 C4 的 \texttt{Open model weights?} 严格前沿样本要求模型同时满足开放权重与唯一身份匹配条件，因此许可证合规本身并不足以构成入选依据.
+\item \textbf{许可证:} \texttt{Hub License} 字段须属于 apache-2.0、mit、bsd-2-clause、bsd-3-clause、bsd-3-clause-clear、cc-by-4.0、cc-by-sa-4.0、cc0-1.0、isc、mpl-2.0 十项允许研究与复现的白名单.
+ \item \textbf{去重与冲突:} 按仓库取截至截点的最新记录, 同一仓库同日的类型、许可证、参数量或六项成绩若互相冲突则整组剔除.
+\item \textbf{身份与规模一致性:} C1/C4 参数量相对差不超过 $10\%$, 且发布日期不晚于截点.
+\end{enumerate}
+
+
+
+\subsubsection{C3 一致性与 C8 逐任务口径重建}
+C3 共 4599 行, 其中历史层 26 行, 排行榜层 4573 行. 历史层 全部的 Average 均无法由六项任务得分的平均值在 $0.02$ 分容差内重建, 其中 23 行还包含未经证实的零值. 排行榜层4561 行与 C1 在舍入精度范围内一致, 其余 12 行存在版本或数值不一致. 因此, C3 历史层不能作为与六任务主口径直接可比的独立趋势数据, 排行榜层中的重复记录也不作为新增样本使用.
+
+\begin{definition}[随机猜测基线归一化与任务宏平均]\label{def:q4-task-normalization}
+对选项数 $K>1$ 的子任务原始得分比例 $r\in[0,1]$，定义
+\begin{equation}\label{eq:q4-task-normalization}
+T_K(r):=100\max\left\{0,\frac{r-1/K}{1-1/K}\right\}.
+\end{equation}
+有 $m$ 个子任务的任务分数为 $m^{-1}\sum_{j=1}^mT_{K_j}(r_j)$；先归一化再宏平均. 综合能力仍是 C1 的六任务完整均分 $S_i=\frac16\sum_{j=1}^6S_{ij}$. 
+\end{definition}
+
+公式~\eqref{eq:q4-task-normalization} 与排行榜官方口径一致\cite{hf_normalization}. 对于选择题任务, BBH 和 MuSR 按各子任务实际选项数分别确定随机基线, GPQA 的随机基线为 $1/4$, MMLU-PRO 为 $1/10$. IFEval 取 prompt 和 instance 两项严格准确率的均值, MATH 则保留对应版本评分器给出的结果. 当不同子任务的选项数 $K_j$ 不同时, 先按各自随机基线完成归一化, 再计算任务宏平均.
+
+
+\begin{table}[H]\centering\small
+\caption{C8 与 C1 同身份任务评分口径归一化前后的 RMSE 对比}\label{tab:q4-task-alignment}
+\begin{tabular}{lrr}\toprule
+任务 & 原始比例直接换分 RMSE & 按任务口径归一化后 RMSE\\\midrule
+IFEval & 2.499956 & 2.499956\\
+BBH & 21.385005 & 0.460472\\
+MATH & 10.783909 & 10.783909\\
+GPQA & 23.465973 & 0.805803\\
+MuSR & 30.793565 & 0.795020\\
+MMLU-PRO & 7.694422 & 0.649042\\\bottomrule
+\end{tabular}\end{table}
+\begin{figure}[H]\centering
+\includegraphics[width=0.92\linewidth]{q4_v26_task_alignment.pdf}
+\caption{C8 与 C1 同身份任务评分口径归一化前后的 RMSE 对比图 }\label{fig:q4-v26-tasks}
+\end{figure}
+
+表~\ref{tab:q4-task-alignment} 和图~\ref{fig:q4-v26-tasks} 给出 C8 与 C1 的任务对齐结果. C8 共包含 1958 个版本文件, 其中 1954 个可解析, 4 个无效. 据此重建 76174 条子任务记录和 11724 条任务汇总记录, 并保留指标、任务版本、shot 与评测配置等信息. 历史起点前共有 1859 个模型版本, 其中 715 个可与许可证和模型类型均符合要求的 C1 记录完成身份匹配, 严格身份子集包含 10 个模型.在严格身份子集中, IFEval、BBH、GPQA、MuSR 和 MMLU-PRO 经任务口径归一化后与 C1 一致到浮点精度, 而 MATH 的 RMSE 仍为 $8.517983$ 分, 仅 3 个模型的差异控制在 $0.02$ 分以内. 官方于 2025-02-14 更新过 MATH 评分器\cite{hf_mathverify}, 这一事实说明评测版本需要单独控制, 但不足以据此判断每条 MATH 残差的具体成因.
+
+\subsection{规模、时间与 Loss--Benchmark 接口}
+
+完成能力口径重建后，先回答历史能力如何随规模和时间变化，再检验训练 Loss 是否提供超出简单规模基线的额外信息. 二者分别承担观察性演化解释和跨指标诊断. 
+
+\subsubsection{规模与时间残差的观察性分解}
+
+在较宽的 1708 条 C1 有效样本上，令 $x_i:=\log_{10}N_i$，并以 C1 提交日期 $T_i$ 定义标准化时间 $t_i:=(T_i-T_0)/365.2425$，拟合包含模型类型效应及规模与时间交互效应的观察性关系
+\begin{equation}\label{eq:q4-account-v8}
+S_i=\theta_0+\theta_Nx_i+\theta_tt_i+\theta_{Nt}x_it_i
+ +\delta_P\mathbf 1_{\{G_i=P\}}+\delta_M\mathbf 1_{\{G_i=M\}}+\varepsilon_i.
+\end{equation}
+其中 $G_i=P$ 表示第 $i$ 个模型属于预训练模型，$G_i=M$ 表示属于 base merge. C1 的 \texttt{Pretrained}、\texttt{Base merges} 与 \texttt{Chat models/Fine-tuned} 在程序中依次映为 pre、merge、post. 该模型类型划分仅用于 1708 条样本的观察性分解. 在后续严格前沿的联合分位模型中, 仅区分预训练模型与后训练模型.
+
+\setcounter{obsitem}{0}
+\obsitem{观察性动力学表示}
+对固定类型 $G$，若历史规模路径写成 $x=x(t)$，则拟合能力 $\widehat S(t)=f(x(t),t,G)$ 满足链式法则
+\begin{equation}\label{eq:q4-dynamics-v28}
+\frac{\dd\widehat S}{\dd t}
+=
+\underbrace{\left(\theta_N+\theta_{Nt}t\right)\frac{\dd x}{\dd t}}_{\text{规模扩张通道}}
++
+\underbrace{\left(\theta_t+\theta_{Nt}x(t)\right)}_{\text{非规模时间残差通道}}.
+\end{equation}
+式~\eqref{eq:q4-dynamics-v28} 给出了本问采用的观察性动力学模型：能力变化率被分成沿规模方向移动产生的变化和固定规模后的时间残差. 后者作为\textbf{非规模技术进步}的统计代理，但仍可能混合\textbf{数据工程、架构、对齐、评测口径与样本构成变化}，因此不作因果解释.
+
+\obsitem{观察性分解恒等式}
+固定模型类型 $G$，记式~\eqref{eq:q4-account-v8} 的拟合值为 $f(x,t,G)$. 首尾窗口以类型标准化的规模中位数与时间为参照，定义两因素对称分解
+\begin{subequations}
+    \begin{align}
+\Delta_{\rm scale}&=\tfrac12\{f(x_1,t_0,G)-f(x_0,t_0,G)+f(x_1,t_1,G)-f(x_0,t_1,G)\},\\
+\Delta_{\rm time}&=\tfrac12\{f(x_0,t_1,G)-f(x_0,t_0,G)+f(x_1,t_1,G)-f(x_1,t_0,G)\}.
+\end{align}
+\end{subequations}
+对上述双线性 $f$ 展开，有
+\begin{subequations}\label{eq:q4-shapley-v9}
+    \begin{align}
+\Delta_{\rm scale}&=(x_1-x_0)\left[\theta_N+\tfrac12\theta_{Nt}(t_0+t_1)\right],\\
+\Delta_{\rm time}&=(t_1-t_0)\left[\theta_t+\tfrac12\theta_{Nt}(x_0+x_1)\right],\\
+\Delta_{\rm scale}+\Delta_{\rm time}&=f(x_1,t_1,G)-f(x_0,t_0,G).
+\end{align}
+\end{subequations}
+
+
+把公式~\eqref{eq:q4-account-v8} 的双线性表达代入四个端点的 $f$ 值，常数项与固定类型项在差分中抵消，分别收集 $x_1-x_0$ 和 $t_1-t_0$ 得前两式，再相加消去交互项的路径差，得到最后一式. 
+\par
+公式~\eqref{eq:q4-shapley-v9} 的意义是把双线性模型从起点到终点的总拟合变化，对称地分配给“规模改变”和“时间改变”两条路径，因此二者严格相加为总变化. 它解决的是交互项导致的\textbf{路径依赖记账问题}，而不是因果识别问题. 上述分解在固定类型 $G$、固定拟合系数下是精确恒等式，窗口间的样本构成变化与遗漏变量仍进入拟合项，故 $\Delta_{\rm time}$ 仅刻画控制规模因素后的观察性时间残差，不是可识别的算法因果贡献. 
+
+\obsitem{观察性证据} 90 日窗口的拟合变化可分为规模分量 $-2.250630$ 分与时间残差 $+7.832644$ 分，总和为 $+5.582014$ 分. 把窗口长度改为 30、60、120 日时，规模分量依次为 $-1.3139$、$-1.5992$、$-2.4541$ 分. 加入发布组织固定效应后，90 日规模分量为 $-2.1614$ 分. 
+
+按题目要求把两部分进一步写成“贡献占比”. 若以净拟合增量 $\Delta_{\mathrm{tot}}=5.582014$ 为分母，则有符号记账份额为
+\[
+\omega_{\mathrm{scale}}=\frac{-2.250630}{5.582014}=-40.3\%,\quad
+\omega_{\mathrm{time}}=\frac{7.832644}{5.582014}=140.3\%,
+\]
+二者之和为 $100\%$. 超过 $100\%$ 与负份额共同表示两个分量方向相反. 主答案采用上述有符号净变化份额：规模扩张为 $-40.3\%$，非规模时间残差为 $140.3\%$，对应规模分量抵消了部分时间增益. 若只描述两项变动的绝对幅度，占比分别为 $22.3\%$ 与 $77.7\%$. 这不是净能力提升的正向贡献拆分. 两种口径均是式~\eqref{eq:q4-shapley-v9} 的观察性记账量，不具有“技术进步占比”的含义. 
+
+
+\begin{figure}[H]\centering
+\includegraphics[width=0.94\linewidth]{q4_observational_decomposition.pdf}
+\caption{能力变化的两因素分解 }\label{fig:q4-decomposition-v11}
+\end{figure}
+图~\ref{fig:q4-decomposition-v11} 的横轴为首尾窗口长度, 柱分别表示规模分量与时间残差, 黑点连线表示二者合计. 右图加入发布组织固定效应, 并列比较四种窗口长度和两种回归口径. 规模分量与时间残差之和满足式~\eqref{eq:q4-shapley-v9}, 其中时间残差仅作观察性解释, 不表示可识别的因果技术贡献.
+\subsubsection{同口径 Loss--Benchmark 桥接}
+
+前三问以交叉熵 Loss 为主要评价指标, 本问则以 Benchmark 分数衡量模型能力. 若模型族或评测口径不同, Loss 与 Benchmark 分数之间就不能直接建立换算关系. 因此, 桥接分析仅使用 C6 中与 B1/Pythia 具有可比性的记录, 检验 Loss 是否能够提供超出简单规模基线的额外能力信息. 
+
+第二问基于 B1 真实 Pythia 轨迹得到的参数用于 C6 的高可比桥接, B6 的半合成 Loss 不进入能力回归. 高可比层包含 7 个同模型族样本, 采用逐模型留一验证, 并与简单基线使用相同的数据划分, 结果见表~\ref{tab:q4-bridge-v8} 中可比层包含 68 条跨验证集记录, 按发布组织整组留出进行检验, 其结果仅在该层内部比较, 不与高可比层合并排名.
+\begin{table}[H]\centering\small
+\caption{C6 高可比七点的同折留一桥接检验}\label{tab:q4-bridge-v8}
+\begin{tabular}{lrr}\toprule
+模型 & RMSE（分） & MAE（分）\\\midrule
+训练集均值 & 0.424448 & 0.375562\\
+$\log_{10}N$ 线性 & 0.449642 & 0.397018\\
+Loss 线性 & 0.552834 & 0.478108\\
+Loss 岭回归 & 0.439516 & 0.414016\\
+\bottomrule\end{tabular}\end{table}
+
+高可比层仅包含 7 个同族模型. 留一检验中, 训练集均值基线的 RMSE 为 $0.424448$, 低于 Loss 线性的 $0.552834$ 和 Loss 岭回归的 $0.439516$. 以均值基线为参照, $\log_{10}N$ 线性、Loss 岭回归和 Loss 线性的 RMSE 分别高出 $5.94\%$、$3.55\%$ 和 $30.25\%$, 三种候选均未优于均值基线, 因此该层没有显示 Loss 能够提供额外的能力预测信息.
+
+中可比层按发布组织整组留出, $\log_{10}N$ 线性、Loss 线性、Loss 岭回归和均值基线的 RMSE 分别为 $10.485$、$11.752$、$11.558$ 和 $11.984$ 分. 相对于均值基线, 四者前三者的 RMSE 分别\textbf{降低 $12.51\%$、$1.94\%$ 和 $3.56\%$}. 因此, Loss 线性和 Loss 岭回归在该层均优于均值基线, 但仍弱于 $\log_{10}N$ 线性模型. 由于高、中可比层的 Loss 标尺和验证单位不同, 两层结果不能直接横向比较, 中可比层仅作为独立诊断, 不用于判断同族 Loss 与能力之间是否存在稳定映射.
+
+基于同族同标尺的高可比层结果, 本文在第四问预测中将 Loss 通道权重设为零. 中可比层得到的不同方向结果表明, 这一处理依赖数据的可比层级. B1 在 $N=1$B、$D=150$B 时的 Loss $2.348910$ 仅作为同口径 Pythia 附近的条件插值示例, 不进入能力预测. 因此, 第三问的最优 Loss 与第四问的能力分数\textbf{之间不建立直接映射}, 二者仅通过训练算力 $6ND$ 联系. 
+\subsection{全域有序分位前沿与全局可解性}
+ 
+在统一能力口径并完成规模--时间分析与 Loss--Benchmark 桥接后, 本文进一步构造能力前沿. 对给定的模型规模、时间和类型, 以前景条件分布的指定分位数刻画相应能力水平. 本文采用背景定义~\ref{def:background-quantile} 中的条件 $0.85$ 分位, 并以命题~\ref{thm:bg-pinball-quantile} 对应的平均 Pinball 损失评价预测效果. 
+
+\subsubsection{原分数尺度的联合有序模型}
+历史起点固定为 $T_0=$2025-03-13，原协变量为 $\boldsymbol x=(\log_{10}n,t)^\top$、$t=(T-T_0)/365.2425$. 辅助训练集 $\mathcal A$ 中每个协变量的组织加权均值与标准差分别为 $\mu_{A,j}, \sigma_{A,j}$，标准化变量为 $z_j=(x_j-\mu_{A,j})/\sigma_{A,j}$. 数值近零尺度取 $1$, 严格集的未来标签不参与标准化. 
+
+\begin{definition}[组织权重与联合分位模型]\label{def:q4-joint-quantile}
+令 $o(i)$ 为发布组织，$n_o$ 为同一来源中组织 $o$ 的记录数，$m_o$ 为该组织的抽样频数. 来源内权重为
+\[
+w_i:=\frac{m_{o(i)}/n_{o(i)}}{\sum_r m_{o(r)}/n_{o(r)}}.
+\]
+普通拟合取 $m_o=1$. 设类型 $G\in\{\mathrm{pre},\mathrm{post}\}$，$\tau_j\in\{0.05,0.85,0.95\}$，定义共享斜率的预测曲线
+\begin{equation}\label{eq:q4-joint-quantile}
+\widehat q_{\tau_j}(\boldsymbol x,G)
+:=100(\boldsymbol z^\top\boldsymbol\theta+b_{G,j}).
+\end{equation}
+\end{definition}
+辅助集有 1222 个仓库、350 个组织，与严格训练仓库互斥；整组织留出时两个来源同时排除该组织. 以 $y_i=S_i/100$，辅助回归先求
+\begin{equation}\label{eq:q4-auxiliary-ridge}
+\min_{a_A,\boldsymbol\theta_A,\zeta_A}
+\sum_{i\in\mathcal A}w_i
+\{y_i-a_A-\boldsymbol z_i^\top\boldsymbol\theta_A
+-\zeta_A\mathbf1_{\{G_i=\mathrm{post}\}}\}^2
++0.01(\|\boldsymbol\theta_A\|_2^2+\zeta_A^2).
+\end{equation}
+截距 $a_A$ 不参与惩罚, 这里只保留斜率作为严格分位拟合的收缩中心. 严格训练集 $\mathcal T$ 的目标为
+\begin{equation}\label{eq:q4-joint-objective}
+\min_{\boldsymbol\theta,\boldsymbol b}
+\frac13\sum_{i\in\mathcal T}w_i\sum_{j=1}^3
+\rho_{\tau_j}(y_i-\boldsymbol z_i^\top\boldsymbol\theta-b_{G_i,j})
++\lambda_{\mathrm{QR}}\|\boldsymbol\theta-\boldsymbol\theta_A\|_2^2,
+\quad\lambda_{\mathrm{QR}}=1.
+\end{equation}
+这样训练目标和原分数尺度的分位评价一致. 先以平方损失估计趋势再加残差分位，一般不等价于式~\eqref{eq:q4-joint-objective}. 训练组织等权也不意味着验证时自动使用组织等权，后文同时给出记录平均与组织平均诊断. 
+
+\begin{theorem}[有序联合分位规划的全域形状与全局可解性]\label{thm:q4-ordered-quantile-qp}
+声明形状域为矩形
+\[
+\mathcal D=[-2,4]\times[-2,2],
+\]
+其顶点集合记为 $\mathcal V(\mathcal D)$. 对每一类型 $G\in\{\mathrm{pre},\mathrm{post}\}$ 与
+$0<\tau_1<\tau_2<\tau_3<1$，考虑共享斜率的仿射分位函数
+\[
+\widehat q_{\tau_j}(\boldsymbol x,G)
+=100\{\boldsymbol z(\boldsymbol x)^\top\boldsymbol\theta+b_{G,j}\},
+\quad j=1,2,3,
+\]
+其中 $\boldsymbol z(\boldsymbol x)$ 是由式~\eqref{eq:q4-joint-quantile} 前定义的仿射标准化映射. 设
+$w_i\ge0$、$\sum_iw_i=1$、$\lambda_{\mathrm{QR}}>0$，且所有训练输入位于 $\mathcal D$. 若对每个
+$v\in\mathcal V(\mathcal D)$ 与每一类型 $G$ 施加
+\begin{equation}\label{eq:q4-vertex-order}
+0\le\widehat q_{\tau_1}(v,G)
+\le\widehat q_{\tau_2}(v,G)
+\le\widehat q_{\tau_3}(v,G)\le100,
+\end{equation}
+并假设 $y_i\in[0,1]$，系数盒有界且包含 $\boldsymbol\theta=0$、全部 $b_{G,j}=1/2$ 的常数预测器，则有：
+\begin{enumerate}
+\renewcommand{\labelenumi}{(\roman{enumi})}
+
+\item 式~\eqref{eq:q4-vertex-order} 在整个 $\mathcal D$ 上成立；特别地，共享斜率时全域非交叉等价于
+$b_{G,1}\le b_{G,2}\le b_{G,3}$，上下界只需在顶点检验. 
+\item 以 Pinball 损失的上图变量 $r_{ij}$ 施加
+\[
+r_{ij}\ge\tau_j(y_i-\widehat q_{ij}/100),\quad
+r_{ij}\ge(\tau_j-1)(y_i-\widehat q_{ij}/100),
+\]
+并取 $0\le r_{ij}\le1$，则式~\eqref{eq:q4-joint-objective} 与一个非空紧可行域上的凸二次规划等价，因而至少存在一个全局最优解. 
+\item 所有全局最优解具有相同的共享斜率 $\boldsymbol\theta^\star$；类型--分位截距
+$\boldsymbol b$ 则不一定唯一. 
+\item 令全部线性约束写为 $\mathbf D\boldsymbol\omega\ge\boldsymbol a$，盒约束写为
+$\boldsymbol l\le\boldsymbol\omega\le\boldsymbol u$，二次规划目标记为 $f$. 对任意盒内点
+$\boldsymbol\omega$ 和任意 $\boldsymbol\mu\ge0$，设$\boldsymbol r=\nabla f(\boldsymbol\omega)-\mathbf D^\top\boldsymbol\mu,$则
+\begin{equation}\label{eq:q4-qp-lower}
+\begin{aligned}
+\mathrm{LB}:={}&f(\boldsymbol\omega)
+-\boldsymbol\mu^\top(\mathbf D\boldsymbol\omega-\boldsymbol a)\\
+&+\min_{\boldsymbol l-\boldsymbol\omega\le\boldsymbol v\le
+\boldsymbol u-\boldsymbol\omega}
+\{\boldsymbol r^\top\boldsymbol v+\lambda_{\mathrm{QR}}\|\boldsymbol v_\theta\|_2^2\}
+\le f^*.
+\end{aligned}
+\end{equation}
+因此任一可行点给出的 $\mathrm{UB}$ 满足
+$0\le f(\boldsymbol\omega_{\rm feas})-f^*\le\mathrm{UB}-\mathrm{LB}$，从而得到可计算的全局目标误差证书. 
+\end{enumerate}
+
+\end{theorem}
+\begin{proof}
+矩形 $\mathcal D$ 是其四个顶点的凸包，$\boldsymbol z(\boldsymbol x)$ 为仿射映射，故每个
+$\widehat q_{\tau_j}$、相邻分位差以及 $100-\widehat q_{\tau_3}$ 都是 $\boldsymbol x$ 的仿射函数. 由背景命题~\ref{prop:bg-affine-vertices-v26}，顶点上的非负约束保持到整个凸包；共享斜率在相邻分位相减时消去，得到截距顺序，证明 (i). 
+
+Pinball 损失是两条仿射函数的最大值；因权重非负，上图变量总可取为对应损失而不增加目标，即使零权重处的最优上图变量不唯一. 由于训练输入属于 $\mathcal D$，(i) 给出 $0\le\widehat q_{ij}/100\le1$；又有 $0\le y_i\le1$，故 Pinball 损失不超过 $1$，约束 $0\le r_{ij}\le1$ 不排除原问题的最优解. 目标由线性上图损失与半正定二次项组成，其余约束均为线性或盒约束，因此得到凸二次规划. 取系数盒所包含的 $\boldsymbol\theta=0$、全部 $b_{G,j}=1/2$ 的常数预测，并取对应 Pinball 损失为上图变量，即可构造可行点；有限盒使可行域紧，连续目标因而取得全局最小值，证明 (ii). 
+
+若存在两个全局最优解的共享斜率分别为 $\boldsymbol\theta_1\ne\boldsymbol\theta_2$，则它们的任意真凸组合仍可行. Pinball 损失的上图部分为凸函数，而
+$\lambda_{\mathrm{QR}}\|\boldsymbol\theta-\boldsymbol\theta_A\|_2^2$ 在 $\boldsymbol\theta$ 上严格凸，因此该真凸组合的目标严格小于两个最优值的同一凸组合，矛盾. 故 $\boldsymbol\theta^\star$ 唯一；二次项不惩罚全部截距，故不能据此推出 $\boldsymbol b$ 唯一，证明 (iii). 
+
+对 $\boldsymbol\mu\ge0$，拉格朗日函数
+$L(\boldsymbol w,\boldsymbol\mu)=f(\boldsymbol w)-\boldsymbol\mu^\top(\mathbf D\boldsymbol w-\boldsymbol a)$
+在任一原问题可行点上不超过 $f$，故盒内 $L$ 的最小值是 $f^*$ 的下界. 令
+$\boldsymbol w=\boldsymbol\omega+\boldsymbol v$；由于 $f$ 只有共享斜率块含二次项，精确展开为
+\[
+f(\boldsymbol\omega+\boldsymbol v)
+=f(\boldsymbol\omega)+\nabla f(\boldsymbol\omega)^\top\boldsymbol v
++\lambda_{\mathrm{QR}}\|\boldsymbol v_\theta\|_2^2.
+\]
+代入拉格朗日函数并在盒内对 $\boldsymbol v$ 最小化即得式~\eqref{eq:q4-qp-lower}. 任意原问题可行目标都是上界，因此 $\mathrm{UB}-\mathrm{LB}$ 给出全局目标误差界，证明 (iv). 
+\end{proof}
+非交叉分位约束的思想见文献~\cite{bondell_noncrossing}. 这里的矩形只是形状保证域，不等同于经验支持域. 共享斜率还意味着同类型分位带宽与协变量无关，是需要由样本外误差检验的结构限制. 
+
+\subsubsection{声明域与时间外推}
+程序在原协变量 $(\log_{10}n,t)$ 上取
+$\mathcal D=[-2,4]\times[-2,2]$ 的顶点，再用辅助集的中心和尺度
+将顶点变换为 $\boldsymbol z$, 因此 $\mathcal D$ 不是标准化坐标的矩形. 
+严格训练样本的原坐标范围为
+$\log_{10}n\in[-0.3063,2.1481]$、
+$t\in[-0.7611,-0.0055]$，均位于 $\mathcal D$ 内。
+以 2025-03-13 为历史起点, 12 月和 24 月情景对应的时间坐标分别为
+$t=1,2$，所报名义前沿情景的
+$\log_{10}n\in[0.9835,2.8883]$,这些点也都在 $\mathcal D$ 内.
+标准化时间坐标 $z_t=5.98, 10.34$ 虽大于 $2$，
+却不能据此判定预测点超出原坐标声明域, 
+因此定理~\ref{thm:q4-ordered-quantile-qp} 的形状结论覆盖这些名义预测点.
+
+\begin{corollary}[全局目标间隙到共享斜率误差]\label{cor:q4-slope-gap-v37}
+在定理~\ref{thm:q4-ordered-quantile-qp} 的条件下，令 $\widehat{\boldsymbol\omega}$ 为可行近似解，$\boldsymbol\theta^\star$ 为唯一最优共享斜率. 若可靠上下界给出
+\[
+0\le f(\widehat{\boldsymbol\omega})-f^*\le\varepsilon_{\mathrm{opt}}:=\mathrm{UB}-\mathrm{LB},
+\]
+则
+\begin{equation}\label{eq:q4-slope-gap-v37}
+\|\widehat{\boldsymbol\theta}-\boldsymbol\theta^\star\|_2
+\le\sqrt{\varepsilon_{\mathrm{opt}}/\lambda_{\mathrm{QR}}}.
+\end{equation}
+对于同一类型、同一分位水平的两个输入，记其标准化差为 $\Delta\boldsymbol z$，则预测差的数值误差满足
+\begin{equation}\label{eq:q4-contrast-gap-v37}
+|\Delta\widehat q-\Delta q^*|
+\le100\|\Delta\boldsymbol z\|_2\sqrt{\varepsilon_{\mathrm{opt}}/\lambda_{\mathrm{QR}}}.
+\end{equation}
+\end{corollary}
+\begin{proof}
+取任一最优解 $\boldsymbol\omega^*$. 对 $0<t<1$，可行域凸与目标斜率块的二次结构给出
+\begin{align*}
+f^*&\le f((1-t)\boldsymbol\omega^*+t\widehat{\boldsymbol\omega})\\
+&\le(1-t)f^*+tf(\widehat{\boldsymbol\omega})
+-\lambda_{\mathrm{QR}}t(1-t)\|\widehat{\boldsymbol\theta}-\boldsymbol\theta^\star\|_2^2.
+\end{align*}
+移项、除以 $t$ 并令 $t\to0^+$，得
+$f(\widehat{\boldsymbol\omega})-f^*\ge\lambda_{\mathrm{QR}}\|\widehat{\boldsymbol\theta}-\boldsymbol\theta^\star\|_2^2$，从而得到第一式. 同类型同分位相减消去截距，再由 Cauchy--Schwarz 不等式得到第二式. 
+\end{proof}
+
+对包含全量拟合在内的 279 份有序联合分位拟合记录逐份检查, 全局目标的最大已记录间隙为 $6.70588\times10^{-8}$. 取已报告的 $\lambda_{\mathrm{QR}}=1$, 由各次目标间隙得到的最大归一化斜率数值误差界为 $\sqrt{6.70588\times10^{-8}}=2.59\times10^{-4}$. 声明域内同类型、同分位两个输入之间的最大标准化距离不超过矩形对角长度 $\sqrt{6^2+4^2}=7.2111$. 因此, 式~\eqref{eq:q4-contrast-gap-v37} 给出的最大预测对比误差界为 $100\times7.2111\times2.59\times10^{-4}=0.1867$ 分. 严格训练样本自身的最大标准化距离为 $5.49$, 对应的误差界为 $0.1422$ 分.
+
+\textbf{上述结果表明, 在本文声明域内, 有序联合分位模型的数值优化误差受到较小的上界控制. }
+
+算法~\ref{alg:q4-ordered-frontier} 将顶点形状约束、凸规划的目标界、历史选型和第三问训练 FLOPs 接口串成可复核的第四问主线。历史截点只使用当时可得的记录, 复用晚期与整组织留出仅用于报告适用性，不反过来选择主候选. 未来曲线的组织重抽样范围与个体分位带也分开记录.
+\begin{algorithm}[H]
+\caption{第四问的有序分位前沿拟合与条件情景预测}\label{alg:q4-ordered-frontier}
+\small
+\begin{algorithmic}[1]
+\Require 六任务 C1/C4 历史记录、第三问求解器、历史起点 $T_0$ 与拟合容差 $\varepsilon$
+\Ensure 选中前沿、拟合目标界、回溯指标及 12/24 月条件分位预测
+\State $\mathcal M\gets\{\text{联合时间},\text{联合规模--时间}\}$；原坐标域 $\mathcal D\gets[-2,4]\times[-2,2]$
+\For{历史截点 $s$ 及候选 $M\in\mathcal M$}
+  \State 按 $s$ 建立严格集 $\mathcal T_s$ 与互斥辅助集 $\mathcal A_s$，计算组织权重
+  \State 仅由 $\mathcal A_s$ 求标准化中心、尺度与辅助岭回归斜率 $\boldsymbol\theta_A$
+  \State 建立共享斜率和类型--分位截距 $\widehat q_{\tau_j}=100(\boldsymbol z^\top\boldsymbol\theta+b_{G,j})$
+  \State 在 $\mathcal V(\mathcal D)$ 施加 $0\le\widehat q_{.05}\le\widehat q_{.85}\le\widehat q_{.95}\le100$
+  \State 引入 Pinball 上图变量 $r_{ij}$，按式~\eqref{eq:q4-joint-objective} 求凸二次规划
+  \State 由可行解得 $\mathrm{UB}$，用非负乘子与式~\eqref{eq:q4-qp-lower} 求 $\mathrm{LB}$ \Comment{定理~\ref{thm:q4-ordered-quantile-qp}}
+  \If{约束违反或 $\mathrm{UB}-\mathrm{LB}>\varepsilon$} \State 细化求解；仍未达标则记录失败 \EndIf
+  \State 只用截点前 C4 推算验证规模，记录 $0.85$ 分位的开发期 Pinball 损失
+\EndFor
+\State 以开发期损失选 $M^*$；复用晚期、整组织留出与时间切分校准另作诊断
+\State 在 $T_0$ 前全部严格记录上重拟合 $M^*$，保存形状松弛量与 $\mathrm{UB}-\mathrm{LB}$
+\For{每种质量成本、$\zeta\in\{0,0.5,1\}$ 及 $H\in\{1,2\}$ 年}
+  \State $F_H\gets F_0 10^{\zeta r_C H}$；重解第三问，使 $6N_H D_H=F_H$ \Comment{只传训练 FLOPs}
+  \State 核对第三问的全局质量最优性、预算残差与训练算力匹配残差
+  \For{$G\in\{\mathrm{pre},\mathrm{post}\}$}
+    \State $\boldsymbol x_H\gets(\log_{10}[N_{\mathrm{ref},G}N_H/N_0],H)$；核对 $\boldsymbol x_H\in\mathcal D$
+    \State 输出 $\widehat q_{.05}(\boldsymbol x_H,G),\widehat q_{.85}(\boldsymbol x_H,G),\widehat q_{.95}(\boldsymbol x_H,G)$
+  \EndFor
+\EndFor
+\State 同步重抽样发布组织并配对第二问完整参数行，报告有效抽样的曲线范围
+\State \Return $M^*$、$[\mathrm{LB},\mathrm{UB}]$、回溯指标、条件预测与曲线抽样范围
+\end{algorithmic}
+\end{algorithm}
+
+\subsubsection{斜率惩罚强度的敏感性}
+前述零时间斜率下的点预测主要由规模倍率驱动，因此进一步检验该结果对惩罚强度选择的敏感性. 保持辅助集、严格样本及其余设定不变，对 $\lambda_{\mathrm{QR}}\in \left\{ 0.01,0.05,0.1,0.25,0.5,1,2,5,10 \right\} $ 分别重新求解同一凸二次规划（$\lambda_{\mathrm{QR}}=0$ 不满足定理~\ref{thm:q4-ordered-quantile-qp} 对正斜率惩罚的要求），因此不纳入比较. 九档结果列于附录~\ref{app:v39-algorithms} 的表~\ref{tab:q4-lambda-sensitivity}.
+
+九组拟合的共享时间斜率绝对值均不超过 $0.105$ 分/年, 仅在 $\lambda_{\mathrm{QR}}=0.25$ 时取 $0.1048$ 分/年, 说明主模型得到的近零时间斜率并非由单一惩罚强度决定. 随着惩罚强度变化，规模斜率由 $1.85$ 增至 $5.25$ 分/十倍. 相应地，在 $\zeta=1$ 的 24 月情景下，有序联合分位候选对预训练模型的点预测范围为 $22.641$--$23.133$ 分，跨度 $0.49$ 分；后训练模型为 $32.277$--$33.263$ 分，跨度 $0.99$ 分. 因此，附录表~\ref{tab:q4-lambda-sensitivity} 中各结构候选的点预测均对应主选设定 $\lambda_{\mathrm{QR}}=1$，其余惩罚强度结果作为敏感性分析报告.
+%预训练模型的点预测范围为 $22.641$--$23.133$ 分，跨度 $0.49$ 分；后训练模型为 $32.277$--$33.263$ 分，跨度 $0.99$ 分. 因此，表~\ref{tab} 中的名义点预测均对应主选设定 $\lambda_{\mathrm{QR}}=1$，其余惩罚强度结果作为敏感性分析报告.
+
+作为补充，归档的滚动检验比较了 $\lambda_{\mathrm{QR}}=0.1$ 与 $10$ 的预测表现. 两者开发期平均 Pinball 损失分别为 $4.726347$ 和 $4.670423$，复用晚期分别为 $1.210677$ 和 $0.906569$. 同期 $90\%$ 区间分数分别为 $30.318614$ 和 $45.90053$. 点预测指标与区间指标对惩罚强度呈现不同响应，因此本文仍按照开发期点预测损失确定主候选，保留 $\lambda_{\mathrm{QR}}=1$，并将上述结果作为不同评价指标之间的敏感性对照.
+
+
+\subsection{求解误差、历史覆盖与有限样本校准}
+
+\subsubsection{开发、复用晚期与跨组织检验}
+时间外检验采用 2024-09-13 至 2025-02-13 的六个月度截点, 预测窗口设为 1 个或 3 个日历月, 共形成 9 个有效验证折. 其中, 开发期截至 2024-12-13, 包含 16 次预测、8 个仓库和 2 个组织. 晚期样本外验证包含 8 次预测、4 个仓库和 4 个组织, 且均为后训练模型. 另将跨越开发期与晚期分界的 7 次预测单独报告. 各验证折的主预测仅使用预测时点可获得的日期、模型类型以及当时 C4 信息和参考规模推算得到的 $N$, 不引入未来实际规模. 此外, 本文设置整组织留出检验：将目标组织同时从严格样本和辅助样本中剔除, 并保留已知的 $N$ 作为条件输入, 从而检验模型在给定规模等条件下向新组织迁移的适用性. 由此形成时间外、跨分界与组织外相互补充的历史验证体系.
+
+候选模型限定为联合时间和联合规模--时间两种，并依据开发期损失选择后者，固定 $\lambda_{\mathrm{QR}}=1$. 近半年经验分位、独立分位回归和辅助趋势模型作为比较基准，模型选择仅依据开发期损失，晚期结果不参与选择. 验证指标为原 $0$--$100$ 分尺度上的平均 $0.85$ Pinball 损失
+\begin{equation}\label{eq:q4-validation-pinball-v26}
+\mathrm{PB}_{0.85}:=\frac1m\sum_{i=1}^m
+\rho_{0.85}(S_i-\widehat q_{0.85,i}).
+\end{equation}
+
+独立分位基准在开发期和整组织留出中分别出现 15 次和 5 次相邻分位顺序不一致, 联合有序模型在两类检验中均保持分位有序. 在惩罚强度敏感性检验中, $\lambda_{\mathrm{QR}}=10$ 时的晚期损失降为 $0.906569$, 对应区间分数上升为 $45.90053$. 固定主候选的区间分数为 $30.63021$，不根据晚期结果重新选择参数. 此外, 去除 MATH 后的晚期损失为 $1.660028$, 对应不同的五任务目标.
+
+\begin{table}[H]\centering\small
+\caption{条件分位模型验证结果}\label{tab:q4-v26-rolling}
+\begin{tabular}{lrrrr}\toprule
+模型 & 开发期 & 复用晚期 & 跨分界窗口 & 整组织留出\\\midrule
+近半年经验分位 & 4.224773 & 2.579856 & 3.389216 & 3.076414\\
+独立分位基准 & 5.794666 & 2.448574 & 2.260022 & 1.789583\\
+辅助趋势基准 & 3.819872 & 2.720884 & 2.108135 & 1.815348\\
+联合时间 & 4.964083 & 1.693356 & 3.409182 & \textbf{4.124014}\\
+联合规模--时间 & 4.726347 & 1.189958 & 3.587237 & 3.724345\\\bottomrule
+\end{tabular}\end{table}
+
+\begin{table}[H]\centering\small
+\caption{各验证条件的样本构成}\label{tab:q4-v26-rolling-conditions}
+\begin{tabular}{lrrrll}\toprule
+验证条件 & 预测数 & 仓库数 & 组织数 & 窗口 & 规模输入\\\midrule
+开发期 & 16 & 8 & 2 & 1 月窗 8 与 3 月窗 8 & 由当时 C4 推算 \\
+复用晚期 & 8 & 4 & 4 & 1 月窗 4 与 3 月窗 4 & 由当时 C4 推算 \\
+跨分界窗口 & 7 & 5 & 4 & 3 月窗 7 & 由当时 C4 推算 \\
+整组织留出 & 33 & 33 & 18 & 不适用 & 已知 $N$ \\\bottomrule
+\end{tabular}\end{table}
+\begin{figure}[H]\centering
+\includegraphics[width=0.94\linewidth]{q4_v26_validation.pdf}
+\caption{各条件分位数前沿候选在不同验证条件下的表现. 晚期仅 4 个已查看仓库；整组织留出使用已知规模，与时间窗预测的输入条件不同. }\label{fig:q4-v26-validation}
+\end{figure}
+
+表~\ref{tab:q4-v26-rolling} 给出同一六任务目标下的 $0.85$ Pinball 损失, 各列对应不同验证条件. 具体预测数、仓库数与组织数见表~\ref{tab:q4-v26-rolling-conditions}. 前三列按记录等权计算, 末列对应整组织留出结果. 表~\ref{tab:q4-v26-rolling-conditions} 中的“窗口”表示计算相应损失所采用的预测期, 开发期与晚期样本外验证均同时包含 1 月窗和 3 月窗.表~\ref{tab:q4-v26-rolling} 与图~\ref{fig:q4-v26-validation} 显示: 联合规模--时间模型在晚期样本外验证中的 Pinball 损失相对经验分位和辅助趋势基准分别下降 $53.88\%$ 和 $56.27\%$, 表现出较好的时间外预测能力. 进一步将晚期预测窗口限定为 1 个月时, 该模型的损失为 $1.251657$, 仍低于经验分位的 $3.955578$ 和辅助趋势基准的 $2.340656$.作为权重口径的补充检验, 整组织留出采用组织等权后, 联合规模--时间模型、辅助趋势基准和独立分位基准的损失分别为 $2.247946$、$1.552935$ 和 $1.576110$. 因此, 记录等权、组织等权以及不同预测窗口共同构成相互补充的验证口径, 用于从时间外预测和组织外迁移两个方面评价条件分位模型的表现.
+
+
+\input{tables/q4_coverage.tex}
+
+\subsubsection{时间切分校准及其适用条件}
+在每个历史外层截点内, 按仓库日期将较早记录用于模型拟合, 较晚记录用于校准, 同日记录整体划入同一集合. 校准组织同时从两个拟合来源中排除. 模型拟合完成后不再使用校准标签重新估计参数, 所需规模依据更早拟合截点的信息推算.
+
+\begin{definition}[分位带的校准分数与区间分数]\label{def:q4-calibration}
+对已固定的上下分位函数，定义
+\begin{subequations}
+    \begin{align}\label{eq:q4-cqr}
+R_i&:=\max\{\widehat q_{0.05}(X_i)-S_i,\ S_i-\widehat q_{0.95}(X_i)\},\\
+k_\varepsilon&:=\lceil(m+1)(1-\varepsilon)\rceil,
+\quad c_\varepsilon:=\begin{cases}\max(0,R_{(k_\varepsilon)}),&k_\varepsilon\le m,\\+\infty,&k_\varepsilon>m,\end{cases}\\
+I(X)&:=[\widehat q_{0.05}(X)-c_\varepsilon,
+\widehat q_{0.95}(X)+c_\varepsilon]\cap[0,100],\quad\varepsilon=0.1.
+\end{align}
+\end{subequations}
+若 $c_\varepsilon=+\infty$，约定 $I(X)=[0,100]$. 以
+\begin{equation}\label{eq:q4-interval-score}
+\mathrm{IS}_{\varepsilon}(l,u;y):=(u-l)
++\frac2\varepsilon(l-y)_++\frac2\varepsilon(y-u)_+
+\end{equation}
+同时评价宽度与漏覆盖代价，其中 $(v)_+:=\max(v,0)$. 
+\end{definition}
+
+\begin{proposition}[可交换条件下的有限样本边际覆盖]\label{thm:q4-cqr-conditional}
+条件于拟合信息，若 $m$ 个校准分数与一个新观测分数可交换，且新得分属于 $[0,100]$，则式~\eqref{eq:q4-cqr} 满足
+\[
+\Prob\{S_{\rm new}\in I(X_{\rm new})\}\ge1-\varepsilon.
+\]
+该结论是新观测的边际覆盖，不是对每个规模、类型或时间的条件覆盖保证. 
+\end{proposition}
+\begin{proof}
+由背景的可交换秩引理~\ref{thm:bg-exchangeable-rank-v26}，当 $k_\varepsilon\le m$ 时，新分数不超过校准第 $k_\varepsilon$ 个次序统计量的概率至少为 $k_\varepsilon/(m+1)\ge1-\varepsilon$. 将修正量截为非负只会扩大区间，且得分本已位于 $[0,100]$，与该支持集求交不会删除真实得分. 若秩超过样本量，则返回完整支持区间，覆盖必为一. 这是分位回归校准方法的标准秩论证\cite{romano_cqr}. 
+\end{proof}
+当 $m<9$ 时, 名义 $90\%$ 覆盖所需的经验秩超过现有样本量, 当前样本无法直接支持该分位点, 因此本文不以样本最大值替代缺失秩.  组织级诊断先取各组织内 $R\_i$ 的最大值, 再在组织层面进行排序，相应理论结果以组织单位与未来单位的可交换性为前提. 结合现有时间切分、组织结构、窗口设置与评测版本口径, 统一报告历史回溯中的实测覆盖结果, 并将其作为后续区间表现的经验参考.
+
+
+\begin{table}[htbp]\centering\small
+\caption{复用晚期的区间校准：8 次预测、4 个仓库}\label{tab:q4-v26-calibration}
+\begin{tabular}{lrrrr}\toprule
+方案 & Pinball 损失 & 实测覆盖 & 平均宽度/分 & 区间分数\\\midrule
+全部历史联合拟合 & 1.189958 & 75.0\% & 17.0728 & 30.6302\\
+时间切分、未校准 & 4.632594 & 0.0\% & 0.8233 & 146.4512\\
+时间切分、记录校准 & 4.632594 & 100.0\% & 26.6454 & 26.6454\\
+时间切分、组织校准 & 4.632594 & 100.0\% & 81.6613 & 81.6613\\\bottomrule
+\end{tabular}\end{table}
+表~\ref{tab:q4-v26-calibration} 汇总覆盖率、区间宽度与区间分数, 相应图示见附录~\ref{app:v39-algorithms} 的图~\ref{fig:q4-v26-calibration}, 其中 10 个组织校准对应完整支持区间. 随着覆盖率提高, 区间宽度相应增加. 各切分模型使用对应历史截点之前的数据拟合, 因此其点预测与全历史样本拟合结果分别计算. 校准仅调整上下分位带, 不改变切分模型的 $0.85$ 分位点预测, 因此后三行的 Pinball 损失保持一致.
+\subsubsection{有序前沿的凸组合与开发期定权}
+
+历史检验表明，不同基准在不同验证条件下各有优劣. 保留多个候选时，可以在有序分位函数的凸集中组合，并用明确的预测损失约束其长期代价. 
+
+\begin{proposition}[有序分位候选的凸组合]\label{prop:q4-convex-aggregate-v37}
+设第 $k$ 个候选在共同输入域上满足
+$0\le q^{(k)}_{\tau_1}\le\cdots\le q^{(k)}_{\tau_J}\le100$. 
+若 $a_k\ge0$、$\sum_{k=1}^Ka_k=1$，并对所有分位共用权重，定义
+\begin{equation}\label{eq:q4-convex-aggregate-v37}
+q^{\rm agg}_{\tau_j}(x,G):=\sum_{k=1}^Ka_kq^{(k)}_{\tau_j}(x,G),
+\end{equation}
+则组合保持相同的有序性与上下界，且对任意真实分数 $S$ 和任一分位水平，
+\[
+\rho_{\tau_j}(S-q^{\rm agg}_{\tau_j})
+\le\sum_ka_k\rho_{\tau_j}(S-q^{(k)}_{\tau_j}).
+\]
+\end{proposition}
+\begin{proof}
+非负加权保持每个相邻分位差及端点界；Pinball 损失关于预测值凸，应用 Jensen 不等式即得损失界. 
+\end{proof}
+
+有序性不等于组合已经是真实条件分位数，损失凸性也不表示每次预测都优于所有候选. 标准顺序反馈设定下，还可得到累计比较保证. 
+\subsubsection{开发期定权的实际组合}\label{par:q4-aggregation-v38}
+以表~\ref{tab:q4-v26-rolling} 的联合规模--时间与联合时间两候选为输入，只在开发期 16 个标签上选择一个对各输出层共用的权重 $\lambda\in[0,1]$. 对 $0.85$ 分位，求解分段线性的凸目标
+\begin{equation}\label{eq:q4-aggregation-lp-v38}
+\min_{0\le\lambda\le1}\frac1{16}\sum_{i=1}^{16}
+\rho_{0.85}\!\left(S_i-\lambda q^{(\mathrm{size,time})}_{0.85,i}
+-(1-\lambda)q^{(\mathrm{time})}_{0.85,i}\right).
+\end{equation}
+
+线性规划与全部有效残差折点的直接枚举均得到最优权重 $\lambda=1$, 对应开发期平均 Pinball 损失为 $4.726347$, 两种求解方法得到完全一致的权重结果. 将该权重统一用于区间下界、$0.85$ 分位点预测与区间上界后, 在开发期、跨分界窗口、晚期样本外验证及整组织留出的 64 条对齐记录上均满足 $0\le \mathrm{low}\le q_{0.85}\le \mathrm{high}\le100$. 
+
+其中 8 条记录在 $5\times10^{-14}$ 的数值容差内满足 $q_{0.85}=\mathrm{high}$, 表明组合后的分位结构在数值计算中保持有序约束.由于最优权重为 $\lambda=1$, 组合结果与原联合规模--时间候选逐条一致. 四类验证条件下的平均 Pinball 损失分别为 $4.726347$、$3.587237$、$1.189958$ 和 $3.724345$, 与表~\ref{tab:q4-v26-rolling} 中对应候选的结果完全一致. 因此, 权重优化、分位有序约束与已有预测结果在数值上相互吻合, 构成对凸组合求解过程和实现结果的双重一致性核验.
+
+\subsubsection{把有序基准纳入候选集的定权结果}\label{par:q4-aggregation-baseline}
+
+
+上述凸组合仅包含两个联合分位候选, 而命题~\ref{prop:q4-convex-aggregate-v37} 适用于任意满足有序性约束的候选. 6.4.1 节构造的有序辅助趋势基准同样满足该条件, 因而可进一步纳入统一候选集. 在开发期 16 个预测标签上求解三候选的单纯形权重后, 得到最优权重 $(0,0,1)$, 即开发期数据全部选择有序辅助趋势基准, 对应平均 Pinball 损失为 $3.819872$；同期联合规模--时间候选的损失为 $4.726347$. 这一结果表明, 凸组合框架能够在保持分位有序性的同时, 根据开发期预测表现对不同结构候选进行统一比较与数据驱动定权.
+
+不同验证条件下各候选的表现有所差异. 在复用晚期 8 条记录上, 辅助趋势基准与联合规模--时间候选的平均 Pinball 损失分别为 $2.720884$ 和 $1.189958$. 在跨分界 7 条记录上, 两者分别为 $2.108135$ 和 $3.587237$. 本文继续采用 6.4.1 节预先设定的选型规则, 即在有序联合分位候选内部依据开发期损失选择主候选. 三候选的验证损失与开发期权重见
+
+\begin{table}[H]\centering\footnotesize
+\setlength{\tabcolsep}{4pt}
+\caption{训练算力增长下的资源倍率}\label{tab:q4-aggregation-baseline}
+\begin{tabular}{lrrrr}\toprule
+候选 & 开发期 $(n=16)$ & 复用晚期 $(n=8)$ & 跨分界 $(n=7)$ & 开发期最优权重\\\midrule
+联合规模--时间（主候选） & $4.726347$ & $1.189958$ & $3.587237$ & $0$\\
+联合时间 & $4.964083$ & $1.693356$ & $3.409182$ & $0$\\
+有序辅助趋势基准 & $3.819872$ & $2.720884$ & $2.108135$ & $1$\\\midrule
+三候选凸组合 & $3.819872$ & $2.720884$ & $2.108135$ & ---\\\bottomrule
+\end{tabular}
+\end{table} 
+表~\ref{tab:q4-aggregation-baseline} 中的权重仅依据开发期 16 个标签拟合, 复用晚期与跨分界结果作为样本外对照. 即时反馈权重更新的累计后悔界及 $T=256$ 的合成协议核验见附录~\ref{app:q4-online-extension}. 
+\subsection{训练算力映射与条件未来前沿}
+
+最后把第三问的资源决策接入能力前沿. 跨问只传递可比训练 FLOPs，不把第三问总预算或 B6 Loss 直接当作 Benchmark 解释变量. 
+
+\subsubsection{从历史训练算力到第三问资源路径}
+C4 限定截至 2025-03-13 发表的 Language 域、开放权重及正训练 FLOPs 后有 346 条记录，完整训练 FLOPs、$N,D$ 的记录为 247 条. 七个年度训练算力 $90\%$ 分位的对数增长斜率为 $r_C=0.604052$. 令 $y$ 为日历年份，历史观察关系写为
+\begin{equation}\label{eq:q4-compute-v8}
+\log_{10}C_{\rm train}=a_C+\kappa_C\log_{10}n+\xi_C(y-2020),
+\quad \kappa_C=1.174053,\quad\xi_C=0.249006.
+\end{equation}
+若增长情景为 $\zeta r_C H$ 个 $\log_{10}$ 单位，且关系系数在未来 $H$ 年固定，则起终点相减得到
+\begin{equation}\label{eq:q4-empirical-increment}
+\Delta\log_{10}n=\frac{(\zeta r_C-\xi_C)H}{\kappa_C}.
+\end{equation}
+其中 $\zeta\in{0,0.5,1}$ 分别对应零增长、历史增长斜率减半和历史增长斜率延续. 在该经验关系下, 即使训练算力保持不变, 参数规模仍可随年份项变化. 作为另一种结构情景, 若固定 $D$, 由 $C_{\rm train}=6ND$ 可得
+$\Delta\log_{10}n=\zeta r_C H$.
+两种表达对应不同的条件设定.
+
+第三问中, 每种质量成本均以总预算 $C_0=10^{22}$ FLOPs、上下文长度 8192 及其自身最优配置为锚点. 先计算该配置对应的训练 FLOPs$F_0:=6N_0D_0$,再定义目标训练 FLOPs$F_H:=F_0,10^{\zeta r_C H}$. 这里只匹配训练分量：
+\begin{equation}\label{eq:q4-training-match-v8}
+6N^*(C_H)D^*(C_H)=F_H.
+\end{equation}
+
+\begin{lemma}[饱和分支上训练 FLOPs 匹配根的唯一性]\label{prop:q4-training-root}
+在第三问 $Q=1$ 分支，设 $A,B_p,k,\alpha,\beta>0$、$h_1=h(1)\ge0$，且 $g(0)=0$. 给定 $T_H:=F_H/10^{18}>0$，尺度满足
+\begin{equation}\label{eq:q4-training-root}
+\frac{n^{\alpha+\beta+1}}{kn+h_1}
+=\frac{\alpha A}{\beta B_pk}\left(\frac{T_H}{6}\right)^\beta.
+\end{equation}
+该式具有唯一正根，回代 $d=T_H/(6n)$、$c=d(kn+h_1)$ 即得该约束分支所需总预算. 要成为完整问题的匹配解，还须验证该预算下 $Q=1$ 全局最优. 
+\end{lemma}
+\textbf{证明说明:} 证明见\ref{app:q4-training-root-proof}. 
+由式~\eqref{eq:q4-training-root} 得到 $Q=1$ 约束分支后，仍需回到第三问的完整质量剖面比较以确认其全局最优性.
+
+\begin{table}[H]\centering\small
+\caption{指数成本下的资源倍率}\label{tab:q4-v26-resources}
+\begin{tabular}{llrrrl}\toprule
+质量成本 & 年数 & $N$ 倍率 & $D$ 倍率 & 总预算倍率 & B6 支持域\\\midrule
+指数 & 1 & 1.363034 & 2.948119 & 3.950885 & $N,D$ 范围内\\
+幂函数 & 1 & 1.355220 & 2.965117 & 3.942384 & $N,D$ 范围内\\
+对数 & 1 & 1.406468 & 2.857076 & 3.997592 & $N,D$ 范围内\\
+指数 & 2 & 1.877598 & 8.600043 & 15.671419 & $N,D$ 均外推\\
+幂函数 & 2 & 1.857838 & 8.691512 & 15.609424 & $N,D$ 均外推\\
+对数 & 2 & 1.985810 & 8.131404 & 16.003896 & $N,D$ 均外推\\\bottomrule
+\end{tabular}\end{table}
+表~\ref{tab:q4-v26-resources} 中均有 $Q^*=1$. 指数成本一年点为 $N=9.679971$B、$D=509.193693$B，两年点为 $N=13.334295$B、$D=1485.38353$B. 两年所有成本的点估计均超出 B6 的 $N,D$ 范围. 一年范围内也不能证明跨来源质量标尺统一. 图~\ref{fig:q4-v26-resources} 展示的是资源倍率，不是能力分数. 
+\begin{table}[H]\centering\small
+\caption{三档算力增长下的 12/24 月资源倍率}\label{tab:q4-v39-slow-resources}
+\begin{tabular}{rrrrr}\toprule
+$\zeta$ & 月数 & $N$ 倍率 & $D$ 倍率 & 总预算倍率\\\midrule
+0 & 12/24 & 1.000 & 1.000 & 1.000\\
+0.5 & 12 & 1.166 & 1.719 & 1.987\\
+0.5 & 24 & 1.363 & 2.948 & 3.951\\
+1 & 12 & 1.363 & 2.948 & 3.951\\
+1 & 24 & 1.878 & 8.600 & 15.671\\\bottomrule
+\end{tabular}\end{table}
+表~\ref{tab:q4-v39-slow-resources} 给出指数质量成本下三档训练算力增长对应的名义资源倍率, 基准为第三问 $10^{22}$ FLOPs 下的自身最优解. 由于减半增长 24 月与延续增长 12 月具有相同的 $\zeta H$, 两种情景对应的资源点重合. 表中各资源点均按照第三问包含质量与注意力开销的总预算口径计算.
+\begin{figure}[H]\centering
+\includegraphics[width=0.93\linewidth]{q4_v26_resource_paths.pdf}
+\caption{三类质量成本下的训练 FLOPs 匹配资源路径 }\label{fig:q4-v26-resources}
+\end{figure}
+
+\subsubsection{主模型条件前沿与联合不确定性}
+共同发布组织抽样同时重估辅助趋势、严格分位、参考规模及 C4 关系. 第二问的完整曲率参数来自另一数据来源, 按原抽样编号配对, 以保持参数之间的行内相关性.  200 次联合抽样全部成功, 后续不确定性分析基于这 200 次有效抽样. 分数回归采用训练期的类型参考规模. 第三问则使用机制锚点 $N_0$, 两者对应不同的建模口径, 因此 B6 的半合成 Loss 与 Pythia Benchmark 分别保留在各自模型中, 跨问连接仍通过统一的训练算力口径实现.
+% 共同发布组织抽样同时重估辅助趋势、严格分位、参考规模及 C4 关系. 第二问的完整曲率参数来自另一数据来源, 按原抽样编号配对, 以保持参数之间的行内相关性. 200 次联合抽样中共有 199 次有效, 后续不确定性分析基于这些有效抽样结果.分数回归采用训练期的类型参考规模, 第三问则使用机制锚点 $N_0$. 两者对应不同的建模口径, 因此 B6 的半合成 Loss 与 Pythia Benchmark 分别保留在各自模型中, 跨问连接仍通过统一的训练算力口径实现.
+\begin{table}[H]\centering\small
+   \caption{主模型的 12/24 月能力分数参考值与两类区间}
+   \label{tab:q4-v39-slowdown}
+   
+   \begin{tabular}{lrrrr}\toprule 类型 & 目标日        & 点估计   & 曲线抽样范围          & 个体分位带           \\\midrule
+                预训练                & 2026-03-13 & 33.20 & $[15.53,33.74]$ & $[9.54,36.35]$  \\
+                预训练                & 2027-03-13 & 33.20 & $[15.53,33.74]$ & $[9.54,36.35]$  \\
+                后训练                & 2026-03-13 & 29.44 & $[24.42,30.77]$ & $[14.53,30.33]$ \\
+                后训练                & 2027-03-13 & 29.44 & $[24.42,30.77]$ & $[14.53,30.33]$ \\
+                \bottomrule\end{tabular}\end{table}
+
+ %\begin{figure}[H]\centering
+ %  \includegraphics[width=0.97\linewidth]{q4_slowdown_frontier.pdf}
+%\end{figure}
+表~\ref{tab:q4-v39-slowdown} 给出主模型在 12/24 月两个期限上的能力点估计与不确定性区间. 历史起点为 2025-03-13, 对应情景日期分别为 2026-03-13 和 2027-03-13, 单位均为综合能力分. 预训练与后训练模型的点估计分别为 33.20 分和 29.44 分. 由于主模型采用近 180 日的类型经验分位, 两个期限的点估计保持一致；三档算力增长情景主要通过表~\ref{tab:q4-v39-slowdown} 中的资源倍率体现. 两类区间刻画不同层面的不确定性：曲线抽样范围反映经验分位估计随样本变化产生的波动, 个体分位带则对应单个模型分数的 $0.05$--$0.95$ 分位范围. 后者未经历史覆盖校准, 因而本文将其作为个体分数分布范围的条件性描述.
+
+
+主模型采用严格前沿入选口径. 前述 90 日观察性分解使用许可、有效性和去重后的 1708 条较宽样本, 属于另一数据口径. 为检验经验分位对样本选择的敏感性, 表~\ref{tab:q4-baseline-caliber} 并列报告三种入选口径在同一 180 日窗口、同一六任务目标下的结果.
+
+
+保留的经验分位基准不含时间趋势，其两个期限的参考值因而相同. 由于该基准的数值取决于样本入选口径，而本节的经验分位对照采用严格前沿口径. 前述 90 日观察性分解采用许可、有效性和去重后的 1708 条较宽样本，两者不可视作同一入选集. 本节并列报告三种口径在同一 180 天窗口、同一六任务目标下的结果，见表~\ref{tab:q4-baseline-caliber}. 
+
+\begin{table}[H]\centering\footnotesize
+\setlength{\tabcolsep}{4pt}
+  \caption{不同样本入选口径下的近 180 日六任务经验分位}\label{tab:q4-baseline-caliber}
+  \begin{tabular}{lrrrr}\toprule
+    入选口径             & 预训练 $n$ & 预训练 $q_{0.85}$         & 后训练 $n$ & 后训练 $q_{0.85}$        \\\midrule
+    严格: 许可+去重+身份+开源权重 & $8$     & $33.1968$ & $4$     & $29.4380$ \\
+    许可去重: 许可白名单+去重    & $98$    & $18.4544$ & $773$   & $38.1002$ \\
+    最宽: 六任务+类型            & $182$   & $19.4413$ & $1873$  & $33.4021$ \\\bottomrule
+  \end{tabular}
+\end{table}
+表~\ref{tab:q4-baseline-caliber} 中, $n$ 为入选模型数. 严格口径的预训练和后训练分位分别为 $33.1968$ 分和 $29.4380$ 分, 即表~\ref{tab:q4-v39-slowdown} 中主模型点估计的未舍入值. 另外两种口径用于衡量样本筛选对经验分位的影响.
+
+严格口径仅包含 $8$ 条预训练记录和 $4$ 条后训练记录, 两类分位相差 $3.7588$ 分. 许可去重口径纳入 $98$ 条和 $773$ 条记录, 对应分位为 $18.4544$ 分和 $38.1002$ 分. 最宽口径纳入 $182$ 条和 $1873$ 条记录, 对应分位为 $19.4413$ 分和 $33.4021$ 分. 样本口径扩大后, 两类模型的分位排序反转, 显示主模型结论对入选规则敏感. 本章通过滚动检验与整组织留出报告其历史验证范围. 全历史最宽口径的预训练和后训练分位分别为 $18.9166$ 分和 $32.3742$ 分, 样本量为 $330$ 和 $2501$. 全历史严格口径分别为 $25.9633$ 分和 $29.2899$ 分, 样本量为 $22$ 和 $11$. 最宽口径的 180 日与全历史结果相差最多 $1.03$ 分.
+
+
+\subsubsection{联合分位的规模--时间增量恒等分解}
+保持类型与分位水平不变，令原单位斜率为 $b_N=100\theta_N/\sigma_{A,N}$、$b_t=100\theta_t/\sigma_{A,t}$，预测期限 $H$ 以年计. 本文无时间趋势衰减的联合候选满足
+\begin{equation}\label{eq:q4-additive-contribution}
+\Delta q_\tau=
+\underbrace{b_N\log_{10}(N_H/N_0)}_{\Delta_N}
++\underbrace{b_tH}_{\Delta_t}.
+\end{equation}
+给定报告阈值 $\varepsilon_{\mathrm{share}}>0$, 当 $|\Delta q_\tau|>\varepsilon_{\mathrm{share}}$ 时, 定义有符号份额 $\omega_N=\Delta_N/\Delta q_\tau$ 和 $\omega_t=\Delta_t/\Delta q_\tau$, 并有 $\omega_N+\omega_t=1$. 公式~\eqref{eq:q4-additive-contribution} 由附录表~\ref{tab:q4-lambda-sensitivity} 主候选一行的起点与终点直接相减得到, 将结构候选前沿的总变化分解为规模项与时间项. 当前原单位规模斜率对应同一行的 $b_N$（分/十倍）, 时间斜率在数值上接近零. 在指数质量成本与历史算力增长情景下, 规模项随预测期限由一年延长至两年而相应增加, 时间项接近零, 点估计对应的规模与时间份额约为 $100\%$ 与 $0\%$. 200 次有效联合抽样进一步给出不同参数抽样下规模项与时间项的份额分布, 一年情景下时间份额的上界约为 $85\%$. 因此, 点估计与联合抽样结果形成互补, 既给出主情景下的明确分解, 又展示不同参数组合下贡献结构的变化范围, 使前沿增量的来源能够得到更完整的量化描述.
+
+\subsubsection{第四问输出与证据边界}
+第四问在数据证据、统计建模与资源情景之间建立了层次清晰的分析体系, 以下三点概述其贡献与适用范围.
+
+\textbf{(1) 评测口径统一与前沿模型的结构保证.} C3 与 C8 的口径分析把历史记录统一到同一套六任务能力标尺: 六任务均分与 C1 官方平均分的最大绝对误差为 $1.42\times10^{-14}$, 各任务按随机猜测基线归一化后与 C1 一致到浮点精度. 定理~\ref{thm:q4-ordered-quantile-qp} 把有序分位模型的全域形状约束、凸规划求解与全局目标证书纳入同一框架: 共享斜率下全域非交叉等价于截距有序, 上下界只需在声明域的四个顶点检验, 因而形状保证可以脱离经验支持域单独成立. 279 份有序联合分位拟合记录的最大目标间隙为 $6.70588\times10^{-8}$, 经推论~\ref{cor:q4-slope-gap-v37} 传为共享斜率误差界 $2.59\times10^{-4}$ 与最大预测对比误差界 $0.1867$ 分. 命题~\ref{thm:q4-cqr-conditional} 进一步给出有限样本区间覆盖的秩论证, 使点预测、分位结构与区间分析处于同一统计框架.
+
+\textbf{(2) 第三问资源路径向能力情景的确定性接口.} 跨问只传递训练 FLOPs $6ND$:
+以 $C_0=10^{22}$、8192 Token 的 $Q^*=1$ 分支为锚点, 按式~\eqref{eq:q4-training-match-v8}
+反求满足训练算力目标的预算. 该分支的唯一性与饱和条件由引理~\ref{prop:q4-training-root} 保证, 表~\ref{tab:q4-v26-resources} 中 18 条资源路径全部经完整质量剖面比较确认 $Q^*=1$, 与该引理的饱和分支条件一致. 这一设计把第三问的资源优化结果与第四问的能力前沿连成 "资源配置—训练算力—能力情景"的连续链条, 同时保持前三问的 Loss 口径与第四问的 Benchmark 口径互不混用.
+
+\textbf{(3) 多层次验证体系及其边界.} 开发期定权、滚动检验、整组织留出与联合抽样互不替代:
+开发期 16 个标签含 8 次 1 月窗与 8 次 3 月窗, 复用晚期 8 次预测涉及 4 个仓库与 4 个组织, 整组织留出 33 条记录涉及 18 个组织. 联合规模--时间候选在复用晚期取得显著的样本外优势, Pinball 损失 $1.189958$ 相对经验分位与辅助趋势基准分别下降 $53.88\%$ 与 $56.27\%$, 同时保持分位有序; 但同一候选在开发期与整组织留出上弱于辅助趋势基准 ($4.726347$ 对 $3.819872$、$3.724345$ 对 $1.815348$), 三候选的开发期定权最优权重 $(0,0,1)$ 也指向辅助趋势基准, 故其优势限于复用晚期这一口径. 此外时间外检验只覆盖 1 与 3 个月窗口, 12/24 月结果依赖不含时间或规模斜率的主模型, 个体分位带的历史实测覆盖为 $50.0\%$--$75.0\%$, 低于名义 $90\%$, 故长期数值应作为条件情景而非已验证预测读取.
+
+总体而言, 第四问形成了“数据口径统一—有序分位建模—历史验证—资源路径接入—未来情景分析”的完整分析链条. 各环节之间具有明确的数学接口和数据对应关系, 既增强了能力前沿建模的结构化程度, 也使不同算力增长情景下的模型能力变化能够得到清晰、可量化且具有较强解释性的展示.
+% 原稿, 注释备查
+%第四问在数据证据、统计建模与资源情景之间建立了较为完整且层次清晰的分析体系. C3/C8 的口径分析首先统一历史记录的六任务能力标尺, 为后续能力前沿建模提供一致的数据基础；定理~\ref{thm:q4-ordered-quantile-qp} 将有序分位模型的全域形状约束、凸规划求解与全局目标证书统一于同一框架, 使模型在数学结构与数值实现之间保持良好一致性；命题~\ref{thm:q4-cqr-conditional} 则进一步补充有限样本区间覆盖的理论依据, 使点预测、分位结构与区间分析形成较为完整的统计框架.第三问的资源路径通过统一的训练 FLOPs $6ND$ 接入式~\eqref{eq:q4-training-match-v8}. 且表~\ref{tab:q4-v26-resources} 中各路径均经完整质量优化确认 $Q^*=1$, 与引理~\ref{prop:q4-training-root} 的饱和分支条件保持一致. 这一设计将第三问的资源优化结果与第四问的能力前沿自然衔接, 在保持不同问题建模口径清晰的同时, 建立了从资源配置、训练算力到能力情景的连续量化链条.在预测层面, 开发期定权、滚动检验、整组织留出和联合抽样共同构成多层次验证体系. 联合规模--时间候选在复用晚期取得较低的 Pinball 损失, 同时保持有序分位结构, 使预测精度与前沿形状约束能够在同一模型中统一表达. 在此基础上, 12/24 月结果进一步将历史起点、训练算力增长路径、模型类型与条件能力前沿整合到统一情景框架中.总体而言, 第四问形成了“数据口径统一—有序分位建模—历史验证—资源路径接入—未来情景分析”的完整分析链条. 各环节之间具有明确的数学接口和数据对应关系, 既增强了能力前沿建模的结构化程度, 也使不同算力增长情景下的模型能力变化能够得到清晰、可量化且具有较强解释性的展示.

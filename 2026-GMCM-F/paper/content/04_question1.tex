@@ -1,0 +1,521 @@
+\section{问题一：数据质量评估与领域配比建模}\label{sec:q1}
+
+第一问包含两类观测单位不同、且无法逐样本匹配的数据. 文档级质量信号用于刻画数据本身的质量特征,  配比实验则用于描述领域比例变化对验证 Loss 的影响. 因此本问先对两类数据分别建模,  再通过可核验的领域映射与共同锚点建立接口. 这样做的目的不是强行构造一个“质量--配比联合回归”, 而是先明确哪些量可识别、哪些量必须留到第二问借助额外质量扰动估计. 
+
+\subsection{完整质量的部分识别与不可识别性}
+
+设第 $r$ 组训练配比为 $\pvec_r=(p_{r1}, \ldots, p_{r17})$, 满足
+\begin{equation}\label{eq:simplex}
+    p_{ri}\ge 0, \quad \sum_{i=1}^{17}p_{ri}=1.
+\end{equation}
+质量信号文件给出文档级的 22 项指标, 配方文件给出 17 域训练比例与 13 个可观测验证域的交叉熵损失. 两类文件来自不同语料体系, 不能将各文件 (按领域) 直接逐项拼接. 本文分别建立文档质量评分与配比响应面, 再讨论二者之间能够成立的关联. 
+
+\subsubsection{数据来源、证据层级与比较范围} 质量侧共有 A1 的 51230 条记录、A2 的 17523 条 arxiv 记录和 A3 的 203752 条 github 记录. 其中 A1 的 1419 条 arxiv 与 10000 条 github 已被扩展文件包含, 因此联合统计按 ID 去重, 最终把 A1 作为含原文的校准层、A2/A3 作为相应域的全量层. 配比侧 A4/A5 含 512 组 1M 训练配方 , A6/A7、A8/A9、A10/A11 分别提供 256、256、64 组实测检验. A12--A15 的 10B、70B 仅为已有尺度模型的估算压力测试. 配比与 Loss 只在同一文件对内按 \texttt{index} 对齐, 行和 0.996--1.003 的舍入误差在建模前归一化.
+
+\begin{definition}[已映射份额的条件均值]\label{def:background-mapped-quality}
+设 $\pvec=(p_1, \ldots, p_K)$ 为一组总和为 $1$ 的非负配比, $\mathcal M$ 为有领域质量代理分数 $z_a\in[0, 1]$ 的领域集合, 并设已映射份额 $m_{\mathcal M}:=\sum_{a\in\mathcal M}p_a>0$. 定义
+\[
+Q_{\mathcal M}:=\frac{\sum_{a\in\mathcal M}p_az_a}{m_{\mathcal M}}.
+\]
+这是已映射份额内部的加权均值. 若其余领域的质量代理分数未知, 它不自动等于完整配方的平均质量. 
+\end{definition}
+
+\begin{proposition}[完整质量的部分识别区间]\label{prop:background-quality-bound}
+在定义~\ref{def:background-mapped-quality} 的条件下, 若未映射领域只知 $z_a\in[0, 1]$, 则完整配方平均质量 $Q_{\mathrm{all}}:=\sum_a p_az_a$ 必满足
+\begin{equation}\label{eq:background-quality-bound}
+m_{\mathcal M}Q_{\mathcal M}
+\le Q_{\mathrm{all}}\le
+m_{\mathcal M}Q_{\mathcal M}+1-m_{\mathcal M}.
+\end{equation}
+令所有未映射代理为 $0$ 或 $1$ 即可达到左右两个端点；该区间是信息缺失下的识别范围, 不是置信区间. 
+\end{proposition}
+\begin{proof}
+把 $Q_{\mathrm{all}}$ 分解为已映射项 $m_{\mathcal M}Q_{\mathcal M}$ 与未映射项 $\sum_{a\notin\mathcal M}p_az_a$. 后者在 $0$ 与 $\sum_{a\notin\mathcal M}p_a=1-m_{\mathcal M}$ 之间, 故得式~\eqref{eq:background-quality-bound}. 
+\end{proof}
+
+
+\subsubsection{一般约束下的质量识别集}
+为掌握有依据的域质量区间或校准关系, 令这些约束构成非空紧集 $\mathcal U\subseteq[0, 1]^K$, 定义
+\begin{equation}\label{eq:q1-general-identification-v37}
+Q_-(\pvec):=\min_{\boldsymbol z\in\mathcal U}\pvec^\top\boldsymbol z, 
+\quad
+Q_+(\pvec):=\max_{\boldsymbol z\in\mathcal U}\pvec^\top\boldsymbol z.
+\end{equation}
+连续性保证两个端点都能达到. 若 $\mathcal U$ 还是凸集, 则线性函数的值域 $[Q_-, Q_+]$. 当约束为线性时, 两端点由线性规划计算. 命题~\ref{prop:background-quality-bound} 是仅有未知域约束时的特例, 属于部分识别而非补齐缺失真值\cite{manski_partial}. 没有新的校准信息时, 不能仅依靠改变聚合公式缩窄该范围, 其进入第二问之前还需检查质量坐标是否一致.
+
+\subsubsection{配比与质量效应的识别边界}
+A16 对 17 个配方域仅给出 3 个直接映射、3 个近似映射. 其余 11 个域没有质量侧同名数据, 但部分可以在额外语义假设下使用代理域. 本文以附件明示的六域映射为主口径, 将扩展映射作为条件敏感性情景, 区分数据可得性与映射规则的选择. 
+
+\begin{proposition}[固定域质量下的配比--质量系数不可识别]\label{prop:q1-quality-collinearity-v15}
+若所有配方 $r$ 的第 $i$ 域质量恒为 $z_i$, 则模型中的两列 $p_{ri}$ 与 $p_{ri}z_i$ 线性相关；观测损失至多识别合并系数 $\beta_i+z_i\theta_i$, 不能分别识别配比系数 $\beta_i$ 和质量交互系数 $\theta_i$. 
+\end{proposition}
+\begin{proof}
+对每一行 $r$, 有 $\beta_i p_{ri}+\theta_i p_{ri}z_i=(\beta_i+z_i\theta_i)p_{ri}$, 故设计矩阵中对应两列满足 $\mathbf x_2=z_i\mathbf x_1$. 由命题~\ref{prop:bg-linear-identifiability}, 设计矩阵存在非零零空间方向. 具体地, 对任意实数 $t$, 把 $(\beta_i, \theta_i)$ 改为 $(\beta_i-tz_i, \theta_i+t)$ 后预测不变, 因此两系数没有唯一数据解. 
+\end{proof}
+据此, 本问分开构造质量代理与配比响应. 质量效应由第二问的 B6 质量扰动另行估计, 并保留其半合成来源标记. 
+
+\subsubsection{质量信号与综合评分}
+
+\textbf{质量信号、方向与标尺: }
+令 $x_{im}$ 为文档 $i$ 在原始指标 $m$ 上的值. 八个列表字段先按官方数据卡的类别顺序压缩\cite{metacard, metarater}. 四组 ModernBERT 六级 logits $z_{im\ell}$ 转为连续等级
+\begin{equation}\label{eq:logit}
+    r_{im}=\frac{1}{5}\sum_{\ell=0}^{5}\ell
+    \frac{\exp(z_{im\ell}-z_{im}^{\max})}{\sum_{k=0}^{5}\exp(z_{imk}-z_{im}^{\max})}.
+\end{equation}
+二分类 \texttt{fluency\_en} 与 \texttt{ad\_en} 均取第 1 类概率 $\sigma(z_1-z_0)$, 分别代表流畅和无广告. \texttt{fineweb\_edu} 取唯一数值；\texttt{qurater} 四项依次为写作风格、所需专业度、事实知识、教育价值, 来自 QuRating 式的主观质量维度\cite{qurating}, 本文以四项均值作为该原始指标的一维摘要. 所需专业度的高低具有任务依赖性, 此处将其视为通用预训练的一个弱代理, 后文检验权重敏感性. 
+
+DSIR 三项原值明显随文本长度改变, 故以 $\max\{w_i, 20\}$ 个词作近似长度校正. 词数与句数先作 $\ln(1+x)$ 变换. 以 A1 的有限值估计每项的 $1\%$、$99\%$ 分位数 $a_m, b_m$, 定义
+\begin{equation}\label{eq:normalize}
+    v_{im}=\min\!\left\{1,  \max\!\left\{0,  \frac{r_{im}-a_m}{b_m-a_m}\right\}\right\}.
+\end{equation}
+教育、流畅、无广告、四组 ModernBERT、QuRating、三组 DSIR,  以及词数、句数、词熵、独特词比例、终止标点比例取 $u_{im}=v_{im}$. 无字母词比例、最高频二元及三元片段比例、大写字母比例取 $u_{im}=1-v_{im}$. 数字字符比例与平均词长没有普遍单调方向,  取中间区间适宜度 $u_{im}=1-|2v_{im}-1|$. 由此所有 $u_{im}$ 都在 $[0, 1]$ 内, 并按``越高越好''解释. 方向与适宜区间是模型假设, 并非附件提供的真值标签. A1 的 18 条记录及 A3 的 1 条记录各有一个 ModernBERT 列表为非有限值, 仅该项用 A1 对应指标的中位数补齐, 其余指标均有效. 固定 A1 标尺后不在 A2/A3 重新拟合. 
+
+将八项模型评分、三项 DSIR 与十一项文本表面信号分别记为 $M_i, U_i, R_i$ 的组内等权平均. 这里先把“连续质量证据”和“明确冲突惩罚”分开. 连续部分给出基础得分, 惩罚项只处理少数满足预先规则的矛盾样本. 等组权版本为 $Q_i^{\rm eq}=(M_i+U_i+R_i)/3$. 因 DSIR 更接近参考语料重要度而非通用质量标签, 主评分降低其权重：
+\begin{subequations}\label{eq:quality}
+   \begin{equation}
+           Q_i=\operatorname{clip}_{[0, 1]}\left(0.50M_i+0.15U_i+0.35R_i-0.25P_i[M_i-R_i-0.40]_+-0.05A_i\right), 
+   \end{equation}
+   \begin{equation}
+        P_i=\mathbf 1_{\{M_i\ge0.70, \ R_i\le0.30\}}, \quad A_i=\mathbf 1_{\{u_{i, \mathrm{edu}}\ge0.70, \ u_{i, \mathrm{noad}}\le0.30\}}.
+   \end{equation}
+\end{subequations}
+式~\eqref{eq:quality} 可以理解为
+\[
+\text{综合质量代理}=\operatorname{clip}\{\text{三组连续证据的加权和}-\text{规则化冲突惩罚}\}.
+\]
+因此权重决定三类证据的相对贡献, $P_i, A_i$ 只决定特定矛盾样本是否额外扣分. 二者在统计含义上应分开做敏感性分析. 令 $\mathcal I_b$ 为质量域 $b$ 的文档集合、$n_b:=|\mathcal I_b|$, 域级质量取 $\bar Q_b=n_b^{-1}\sum_{i\in\mathcal I_b}Q_i$. 标准误差按同域文档的样本标准差除以 $\sqrt{n_b}$ 计算. 质量评分是明确口径下的代理量, 不等同人工标注的真实质量. 
+
+\begin{table}[H]\centering\small
+\caption{七个质量域的综合评分及扩展样本对照表}\label{tab:q}
+\begin{tabular}{lrrrrr}\toprule
+质量域 & A1 条数 & A1 平均 $Q$ & A1 标准误 & 扩展条数 & 扩展平均 $Q$\\\midrule
+arxiv & 1419 & 0.8206 & 0.0010 & 17523 & 0.8209\\
+book & 171 & 0.7011 & 0.0051 & -- & --\\
+c4 & 10000 & 0.6118 & 0.0010 & -- & --\\
+commoncrawl & 9640 & 0.6612 & 0.0008 & -- & --\\
+github & 10000 & 0.5049 & 0.0009 & 203752 & 0.5041\\
+stackexchange & 10000 & 0.6330 & 0.0007 & -- & --\\
+wikipedia & 10000 & 0.5718 & 0.0009 & -- & --\\\bottomrule
+\end{tabular}
+\end{table}
+
+表~\ref{tab:q} 显示,  两域抽样与扩展样本的平均评分高度接近,  其中 arxiv 仅相差 $0.0003$,  github 仅相差 $-0.0008$. 这一结果表明,  所构建的评分体系在两个同源嵌套样本上具有较好的均值稳定性与一致性. 由于扩展集包含相应 A1 记录,  本文将其作为同源样本扩展下的一致性检验.进一步地,  将三组权重调整为各 $1/3$,  或完全去除 DSIR 后,  book、c4 等域的绝对评分会出现一定变化. 这一敏感性分析说明,  模型能够有效反映不同评分口径对各领域质量水平的影响,  同时主要领域的评分结果具有清晰、可解释的结构响应,  从而增强了综合质量指标的可分析性与可复核性.
+
+
+域级质量 $\bar Q_b$ 以文档为等权单位. 由于第三问按 token 计量质量处理的代价, 本文另报告以原文词数 $w_i$（\texttt{rps\_doc\_word\_count} 的未变换原值, 作为 token 体量的近似）为加权均值
+\[\bar Q_b^{\mathrm{tok}}=\frac{\sum_{i\in\mathcal I_b}w_iQ_i}{\sum_{i\in\mathcal I_b}w_i}, \]
+%两种口径都保留. 
+表~\ref{tab:qtok} 给出按文档 ID 去重后七个域的两种结果：去重表保留 A2/A3 中的记录, 故 A1 中已包含于 A2、A3 的 1419 条 arxiv 与 10000 条 github 记录不重复计入, 七域合计 261086 条. 文档等权列与表~\ref{tab:q} 中相应域的均值一致, 词数加权列是新增口径. 
+
+\begin{table}[H]\centering\small
+\caption{按文档 ID 去重后七个质量域的文档等权均值与原文词数加权均值(保留 A2/A3 )}\label{tab:qtok}
+\begin{tabular}{lrrrr}\toprule
+质量域 & 去重条数 & 文档等权 $\bar Q_b$ & 词数加权 $\bar Q_b^{\mathrm{tok}}$ & 差值\\\midrule
+arxiv & 17523 & 0.8209 & 0.8250 & $+0.0041$\\
+book & 171 & 0.7011 & 0.7145 & $+0.0134$\\
+c4 & 10000 & 0.6118 & 0.6635 & $+0.0518$\\
+commoncrawl & 9640 & 0.6612 & 0.6926 & $+0.0313$\\
+github & 203752 & 0.5041 & 0.5683 & $+0.0641$\\
+stackexchange & 10000 & 0.6330 & 0.6600 & $+0.0270$\\
+wikipedia & 10000 & 0.5718 & 0.6579 & $+0.0861$\\\bottomrule
+\end{tabular}
+\end{table}
+
+词数加权后,  七个质量域的平均得分均高于文档等权结果,  但不同领域的变化幅度有所差异. 其中,  wikipedia 由 $0.5718$ 升至 $0.6579$（$+0.0861$）,  github 由 $0.5041$ 升至 $0.5683$（$+0.0641$）,  C4 由 $0.6118$ 升至 $0.6635$（$+0.0518$）,  而 arxiv 由 $0.8209$ 升至 $0.8250$（$+0.0041$）；在扩展表中单独计算时,  A3 的 github 升幅同样为 $+0.0641$. 这一结果表明,  文档等权与 token 加权分别刻画不同层面的平均质量. 前者以文档为分析单位,  描述典型文档的平均质量. 后者以 token 为分析单位,  描述典型 token 所处语料的平均质量. 两种口径相互补充,  使质量评价能够同时覆盖文档层面与语料规模层面的特征.因此第一问主体分析采用文档等权口径,  以保持文档级质量评价的一致性. 第三问涉及按 token 计量的质量处理成本时,  进一步引入 token 加权结果作为补充分析,  从而使质量评价口径与后续成本计量保持对应.
+
+
+
+\textbf{评分稳健性与域内分辨力:}
+
+组权属于模型假设, 故在保持两类显式惩罚规则不变的条件下, 比较主权重 $(0.50, 0.15, 0.35)$、三组等权、去除 DSIR、模型主导、表面信号主导和三个单组极端口径, 共八种设定. 主口径与等权、去除 DSIR、模型主导、表面主导四种设定的七域排序 Spearman 相关依次为 $0.964$、$1.000$、$0.964$ 和 $0.964$；与纯模型、纯 DSIR、纯表面三种极端口径的相关依次为 $0.857$、$0.786$ 和 $0.929$. arxiv 在除纯 DSIR 外的七种设定下居首, 纯 DSIR 下由 book 居首. github 在除纯表面外的七种设定下居末, 纯表面下由 wikipedia 居末. 因此极端单组口径会改变首末域, 不宜把主口径排序说成与组权无关. 表 \ref{tab:7-filed-score} 展示了这七个域的分数和名词变化
+
+\begin{table}[H]
+    \centering
+    \caption{固定惩罚项后改变模型、DSIR 与文本表面三组权重时的质量排名}
+    \renewcommand{\arraystretch}{1.3}
+    \begin{tabular}{l *{7}{>{\centering\arraybackslash}p{1.2cm}}}
+        \toprule
+         & arxiv & book & common\-crawl & c4 & stack\-exchange & github & wiki\-pedia \\
+        \midrule
+        main\_50\_15\_35         & 1 & 2 & 3 & 5 & 4 & 7 & 6 \\
+        equal\_third             & 1 & 2 & 3 & 4 & 5 & 7 & 6 \\
+        no\_dsir\_60\_00\_40     & 1 & 2 & 3 & 5 & 4 & 7 & 6 \\
+        model\_led\_70\_10\_20   & 1 & 2 & 4 & 5 & 3 & 7 & 6 \\
+        surface\_led\_30\_10\_60 & 1 & 2 & 3 & 4 & 5 & 7 & 6 \\
+        model\_only              & 1 & 3 & 4 & 6 & 2 & 7 & 5 \\
+        dsir\_only               & 3 & 1 & 2 & 4 & 6 & 7 & 5 \\
+        surface\_only            & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:7-filed-score}
+\end{table}
+
+在 A1 的 $51230$ 篇文档上按质量域进行单因素平方和分解, $Q_i$ 的总平方和为 $580.893$, 其中域内 $363.705$（$62.6\%$）, 域间 $217.188$（$37.4\%$）. 该恒等分解表明 $Q_i$ 不只是域标签的替身, 域内仍有变异. 它不能证明域内高分文档能改善模型训练, 后者仍需独立训练或人工盲评. 图~\ref{fig:q-groups} 展示三组信号在各域内的分布，其中虚线对应组间冲突诊断阈值. 
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.94\linewidth]{q1_group_score_distributions.pdf}
+\caption{A1 七个质量域在模型评分 $M_i$、DSIR $U_i$ 和文本表面评分 $R_i$ 上的分布 }\label{fig:q-groups}
+\end{figure}
+%图~\ref{fig:q-groups} 展示 A1 七个质量域在模型评分 $M_i$、DSIR 评分 $U_i$ 和文本表面评分 $R_i$ 上的分布,  虚线表示组间冲突的诊断阈值.
+\textbf{表面指标适宜度函数的敏感性分析:}\label{sec:q1-function-sens-v8}
+
+以原始平均词长和数字字符比例为对象, 固定其余二十项指标转换、组权 $(0.50, 0.15, 0.35)$ 与惩罚结构, 比较含主口径在内的十一组函数情景. 平均词长 $x$ 的候选平台在 $3\le x\le10$ 取满分, 低于 3 时取 $x/3$, 高于 10 时以宽度 $s=5$ 或 10 线性衰减到零. 数字字符比例在 A1 同域样本的 80 分位以下不扣分, 80 至 95 分位线性衰减, 95 分位以上取零. 阈值均仅从 A1 拟合, 扩展集 A2/A3 不参与定阈值. 平均词长平台借鉴 Gopher 对网页文本采用的宽接受区间\cite{gopher}. 平台外斜率以及数字比例的域分位是本文试算假设, 并非质量真值. 
+
+表~\ref{tab:q1-function-sens-v8} 列出全部情景. $Q_0$ 仍按六个已映射配比域、锚点配比和文档等权均值计算, 其覆盖的锚点份额为 $31.94\%$. 全部情景均按 ID 去重为 261086 篇, 十一组情景中七域排序的 Spearman 相关均为 1, 但逐文档分数和 $Q_0$ 的绝对标尺会改变, 其中联合平台方案与主口径的逐文档相关最低. 因而“排序稳定”不等于“质量评分被外部证实”. 
+\begin{table}[htbp]\centering\small
+\caption{两项文本表面函数的十一组独立试算}\label{tab:q1-function-sens-v8}
+\begin{tabular}{lrr}\toprule
+情景 & $Q_0$ & 与主口径逐文档 Spearman\\\midrule
+现行主口径 & 0.607474 & 1.000000\\
+两项三角峰移至归一化值 0.6 & 0.605174 & 0.999399\\
+两项三角峰移至归一化值 0.7 & 0.603435 & 0.998314\\
+仅词长平台, $s=5$ & 0.630529 & 0.995200\\
+仅数字比例域内 80/95 分位 & 0.628034 & 0.990344\\
+联合：$s=5$、域内 80/95 分位 & 0.651087 & 0.988656\\
+联合：$s=10$、域内 80/95 分位 & 0.651250 & 0.989524\\
+联合：$s=5$、全局 80/95 分位 & 0.649757 & 0.990929\\
+联合：$s=5$、域内 75/90 分位 & 0.649301 & 0.986049\\
+联合：$s=5$、域内 85/97.5 分位 & 0.652371 & 0.990585\\
+删除两项表面信号 & 0.629372 & 0.994303\\
+\bottomrule\end{tabular}\end{table}
+%表~\ref{tab:q1-function-sens-v8} 列出两项文本表面函数的十一组独立试算. 所有情景均按 ID 去重为 261086 篇文档. $Q_0$ 仍按照六个已映射配比域、锚点配比和文档等权均值计算,  对应的锚点份额覆盖为 $31.94\%$.十一组情景下七个质量域的排序 Spearman 相关系数均为 $1$,  表明领域相对排序对函数形式具有较高稳定性. 不同函数设定会对逐文档分数和 $Q_0$ 的绝对数值产生一定影响,  其中联合平台方案与主口径的逐文档相关最低. 因此,  本文同时报告排序一致性与绝对标尺变化,  从相对排序和数值尺度两个层面对质量评分的稳健性进行检验.
+
+联合替代使 $Q_0$ 在表~\ref{tab:q1-function-sens-v8} 的十一组试算中取得最高值, 是评分函数变换导致的尺度位移, 不代表真实训练质量提升, 本次没有新增人工盲评或等算力下游训练. 主评分规则和平方根二次配比响应面保持冻结, 故第二至四问的正式计算继续使用表~\ref{tab:q1-penalty-ablation} 的主口径 $Q_0$, 不把本节试算分数当作已验证的新输入. 
+
+\subsubsection{质量冲突、领域映射与核验}
+
+\textbf{组间冲突与显式惩罚: }
+对文档 $i$ 的模型、DSIR 和表面三组质量代理 $(M_i, U_i, R_i)$, 定义组间分歧指示函数
+\[
+H_i=\mathbf 1_{\{\max(M_i, U_i, R_i)\ge0.70, \ \min(M_i, U_i, R_i)\le0.30\}}.
+\]
+$H_i$ 只表示三个代理相互不一致. 式~\eqref{eq:quality} 的 $P_i, A_i$ 才触发评分中的显式惩罚. 因此分歧诊断与评分惩罚对应两个不同集合. 
+
+按上述冲突标记, A1 的 c4 域冲突率为 $9.62\%$, github 为 $1.79\%$, arxiv 为 $0.49\%$；在扩展集中, github 为 $1.94\%$, arxiv 为 $0.26\%$. 多数 $H_i=1$ 情形的最高组是 DSIR、最低组是模型评分, 例如 A3 github 有 3810 条属于此型. 它可能代表参考域相似性与通用语言评分的差异, 不能直接判为污染. 式~\eqref{eq:quality} 仅对 $P_i$、$A_i$ 两种更明确的污染型矛盾施加惩罚, 复杂推理文本与低可读性并存也只作分歧记录. 
+
+指示函数 $H_i$ 的高低阈值取 $0.70$ 与 $0.30$ 是本稿的建模选择, 故表~\ref{tab:q1-penalty-ablation} 一并报告标记结果对阈值的敏感性：阈值放宽 $0.05$ 使标记比例约增至 $2.1$ 倍, 收紧 $0.05$ 则降至约 $0.42$ 倍, 可见``冲突''的绝对水平高度依赖阈值设定, 跨表比较只应在同一阈值下进行, 上文各域的冲突率均对应 $0.70/0.30$. 显式惩罚条件由式~\eqref{eq:quality} 单独定义, 不取决于 $H_i$ 的诊断阈值：三个阈值下均有 33 条记录满足惩罚条件, 其中 24 条位于 A1、9 条位于 A3（计数包含重复记录）. 在主阈值下, $H_i$ 标记集合与惩罚集合的交集为 12 条：A3 的 9 条 github 记录全部落入交集, A1 仅 3 条. 
+
+两类显式惩罚与诊断标记并不嵌套,  $P_i$ 的条件（$M_i\ge0.70$ 且 $R_i\le0.30$）自动满足 $H_i=1$, 故 $P_i$ 记录全在交集内, 而 $A_i$ 的条件（教育价值高、无广告）不涉及三组信号的组间极差, 其记录中有相当一部分三组得分都落在 $[0.30, 0.70]$ 内, 因而 $A_i=1$ 而 $H_i=0$. 因此``冲突诊断''与``冲突惩罚''在本文中是两套不重合的规则, 这一点在下文的消融实验中保留. 其余未受惩罚的组间分歧只由固定组权合成, 不附加文档级扣分. 
+
+\textbf{显式惩罚的消融: \quad}由于式~\eqref{eq:quality} 
+
+的两类惩罚只作用于极少数记录, 须报告其对最终评分与下游输入的实际影响, 否则"冲突消解"只是公式上的机制. 在全量记录上按 ID 去重后的 261086 篇文档上分别计算四种情形, 四种情形下的七域均值与域间排序完全一致, 故正文只报告锚点量, 结果见表~\ref{tab:q1-penalty-ablation}. 
+
+\begin{table}[H]\centering\small
+\caption{显式冲突惩罚项的消融结果}\label{tab:q1-penalty-ablation}
+\begin{tabular}{lrrrr}\toprule
+量 & 两项均保留 & 仅保留 $A_i$ & 仅保留 $P_i$ & 两项均去掉\\\midrule
+受惩罚记录数 & $33$ & $21$ & $12$ & $0$\\
+$Q_0$（锚点） & $0.6074742$ & $0.6074768$ & $0.6074789$ & $0.6074814$\\\bottomrule
+\end{tabular}
+\end{table}
+表~\ref{tab:q1-penalty-ablation} 给出显式冲突惩罚的消融结果,  各列标题表示对应设定中保留的惩罚项. 受惩罚文档数按包含 A1/A2/A3 重复记录的 272505 条原始记录统计, $Q_0$ 则基于 261086 条去重记录,  按六个已映射配比域及锚点配比计算. 各质量域的具体结果见表~\ref{tab:q}.
+消融给出一个明确但不利于"惩罚是主要机制"的结论：去掉两类惩罚后 $Q_0$ 由 $0.6074742$ 变为 $0.6074814$, 
+变化量 $7.2\times10^{-6}$（相对 $1.2\times10^{-5}$）；七域均值中变化最大的是 c4 与 wikipedia, 
+也仅为 $8.5\times10^{-5}$ 与 $5.0\times10^{-6}$, 域间排序在四种情形下完全不变. 原因是可核验的：
+在去重后的 261086 篇文档上, 满足 $P_i$ 的记录 $11$ 条、满足 $A_i$ 的记录 $21$ 条, 两类无交集, 
+合计 $32$ 条, 占 $1.23\times10^{-4}$；若按含 A1/A2/A3 重复记录的 272505 条原始记录计, 
+对应 $12$、$21$、$33$ 条, 占 $1.21\times10^{-4}$. 无论采用哪种计数口径, 受影响记录都不超过万分之一点三. 
+因此本文把式~\eqref{eq:quality} 的定位明确为\textbf{诊断指标 $H_i$ 之上的局部修正}, 
+而不是质量评分的主要来源：$H_i$ 用于刻画组间分歧（$0.70/0.30$ 阈值下 A1 为 $2.99\%$、扩展集 A2+A3 为 $1.81\%$、三条文件合计为 $2.03\%$）, 
+$P_i$、$A_i$ 只对最明确的两类污染型矛盾施加扣分. 若希望冲突消解在数值上真正参与评分, 
+需要把离散惩罚改为按分歧幅度连续的稳健聚合；
+主口径不采用该改写, 以免在无人工真值的情况下改变已验证的评分标尺, 下文将其列为条件试算.
+
+
+\textbf{扩展域映射与连续冲突权重的条件试算: \quad}\label{par:q1-review-v44}
+
+为量化上述建模选择, 保留 A16 六域为正式口径, 另将十个未映射域作纯语义代理压力测试：\texttt{dm\_mathematics}、\texttt{pubmed\_central}、\texttt{pubmed\_abstracts} 指向 arxiv, \texttt{philpapers}、\texttt{freelaw} 指向 book, \texttt{hackernews}、\texttt{europarl}、\texttt{uspto\_backgrounds}、\texttt{enron\_emails}、\texttt{ubuntu\_irc} 指向 commoncrawl；\texttt{nih\_exporter} 保持未映射. 这些跨体裁对应没有新的质量真值, 后五项尤其只是宽泛网页代理, 不能提升实测覆盖率. 该情景的条件映射份额为 $0.997006$、$Q_0=0.692706$；若所指定的代理质量值全部准确, 剩余未映射域仅约束在 $[0, 1]$, 完整质量的算术区间为 $[0.690632, 0.693626]$, 不能把这个较窄区间解读为由附件本身识别出的真实质量. 
+
+另以三组信号的极差 $s_i:=\max(M_i, U_i, R_i)-\min(M_i, U_i, R_i)$ 构造连续综合评分情景
+\[
+Q_i^{(\alpha)}=(1-\alpha s_i)(0.50M_i+0.15U_i+0.35R_i), 
+\quad \alpha\in\{0.1, 0.25, 0.5\}.
+\]
+它对全部 $261086$ 篇去重文档施加幅度相关的折减, 并替代式~\eqref{eq:quality} 的两项离散惩罚. 这是无人工真值条件下的结构敏感性, 不是重新校准的主评分. 三档 $\alpha$ 的七域排序相对主口径 Spearman 均为 $1$, 但 $Q_0$ 依次降至 $0.588713, 0.560559, 0.513637$.
+
+图~\ref{fig:q-conflict} 将诊断标记与显式惩罚绘于不同信号平面. A1 的组间 Spearman 秩相关中, $M_i$--$U_i$ 为 $0.382$, $M_i$--$R_i$ 为 $0.288$, $U_i$--$R_i$ 为 $0.625$. 这种相关结构与大量 DSIR 高、模型组低的分歧一致. 图中星号稀少, 也说明质量评分的惩罚是针对明确条件的局部修正, 而非对所有 $H_i=1$ 样本统一扣分. 
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.94\linewidth]{q1_conflict_geometry.pdf}
+\caption{A1 文档三组质量信号的关系与冲突标记图 }\label{fig:q-conflict}
+\end{figure}
+图~\ref{fig:q-conflict} 展示 A1 文档三组质量信号之间的几何关系. 左图以模型组和 DSIR 组为两个坐标轴,  颜色表示文本表面组, 右图区分组间分歧标记与受到显式惩罚的文档.
+A1 原文可用于局部核验. 按域比较 $Q$ 最高、最低及组间信号分歧较大的文档后, 低分 github 示例多为 XML/HTML 模板片段, 高分 arxiv 和 c4 示例多为连贯的学术段落. 另从 A1 原文计算三项事后诊断指标：重复长行比例、广告短语标记和至少三个 URL 标记. 这三项均不参与 $Q$ 的计算, 也不参与质量评分算法. 
+
+将 A1 的 51230 条记录在各域内按 $Q$ 分为四组, 再合并同分位记录, 四组文档数依次为 12808、12808、12806、12808. 重复长行比例的四组均值依次为 $2.318\%$、$2.007\%$、$2.339\%$、$2.301\%$,  广告短语和至少三个 URL 的标记率也不呈一致的单调变化. 因此, 这些事后诊断不能作为 $Q$ 有效性的支持性证据. 另一方面, 域间次序在 11 组函数情景中不变, 域内平方和仍占总平方和的 $62.6\%$；故 $Q$ 可作为本附件内域间相对排序的条件代理, 不能据此确认为文档级质量真值或跨来源训练收益. 文本质量仍需独立人工盲评或下游训练实验核验；A2/A3 不含原文, 无法复算这三项诊断指标. OpenScholar 的专项知识问答结果说明检索证据与训练数据组织会影响具体任务表现\cite{asai_openscholar}, 但不单独识别本文 $Q$ 的因果作用. 
+
+%\subsection{Fisher--Rao 配比响应与选择后悔界}
+
+上一节得到的是文档质量及其有限领域映射, 但无法回答“改变十七域配比后验证 Loss 如何变化”. 为避免把缺失质量域纳入进回归, 本文转而直接使用 A4/A5 的配比--Loss 实验建立独立响应面, 信息几何只负责选择适合单纯形约束的坐标, 不替代统计验证. 
+
+\subsubsection{平方根响应面与模型选择}
+
+A4/A5 给出 $512$ 组十七域训练配方及其在十三个验证域上的 Loss. 令 $\bar{\mathcal L}_j$ 为 A5 第 $j$ 个验证域 Loss 的训练折均值, 并定义 $Y_{rj}:=\mathcal L_{rj}/\bar{\mathcal L}_j$. 本文以
+\begin{equation}\label{eq:objective}
+J(\pvec_r)=\frac1{13}\sum_{j=1}^{13}Y_{rj}, \qquad
+\pvec_r\ge0, \quad\sum_{i=1}^{17}p_{ri}=1
+\end{equation}
+作为配比选择的等权目标, 同时对十三个 $Y_{rj}$ 分别拟合. 这里的归一化先消除十三个验证域自身 Loss 量级差异, 再取等权平均, 因此 $J(\pvec)$ 比较的是“相对各域典型水平的平均损失”, 而不是让数值较大的验证域自动占据更大权重. 折内的 $\bar{\mathcal L}_j$ 只从该折训练行计算, 避免验证行参与目标归一化. 
+
+
+\subsubsection{信息几何坐标与平方根响应面}
+
+由定义~\ref{def:background-simplex} 与定理~\ref{thm:bg-sqrt-isometry}, 配比平方根坐标
+$\boldsymbol\phi(\pvec):=(\sqrt{p_1}, \ldots, \sqrt{p_{17}})^\top$
+落在单位球面正象限, 并与 Fisher--Rao 局部几何相容. 因此本文用平方根坐标构造响应面. 这一几何依据只说明坐标选择合理, 预测优劣仍由交叉验证决定. 
+
+置 $\phi_i=\sqrt{p_i}$. 本文的主响应面是平方根坐标的全二次岭回归, 其标准化特征经训练折拟合后, 可在原始配比上写成
+\begin{equation}\label{eq:sqrtquad}
+\widehat Y_j(\pvec)=b_{j0}
+ +\sum_{i=1}^{17}a_{ji}\sqrt{p_i}
+ +\sum_{i=1}^{17}d_{ji}p_i
+ +\sum_{i<k}c_{jik}\sqrt{p_i p_k}.
+\end{equation}
+
+为区分模型结构与领域效应, 令 $\boldsymbol\phi(\pvec)=(\sqrt{p_1}, \ldots, \sqrt{p_{17}})^\top$、$\widehat J(\pvec)=13^{-1}\sum_{j=1}^{13}\widehat Y_j(\pvec)$, 并定义 $\DeltaJ(\pvec):=\widehat J(\pvec)-\widehat J(\pvec^{(0)})$. 十三域平均响应可写成
+\begin{equation}\label{eq:q1-matrix-v9}
+\widehat J(\pvec)=b_0+\boldsymbol a^\top\boldsymbol\phi(\pvec)
++\boldsymbol\phi(\pvec)^\top\mathbf B\boldsymbol\phi(\pvec), \qquad \mathbf B=\mathbf B^\top.
+\end{equation}
+式~\eqref{eq:q1-matrix-v9} 把响应面分成三个层次：$b_0$ 是共同基线, $\boldsymbol a^\top\boldsymbol\phi$ 描述平方根坐标中的一阶方向, $\boldsymbol\phi^\top\mathbf B\boldsymbol\phi$ 描述曲率与域间联合变化. 由于这些项是在球面而不是整个 $\mathbb R^{17}$ 上观测, 系数表示并不唯一. 单纯形约束给出 $\phi_a\ge0$、$\sum_a\phi_a^2=1$, 即平方根坐标落在单位球面的正象限部分. 因而对任意实数 $t$, $(b_0, \mathbf B)$ 与 $(b_0-t, \mathbf B+t\mathbf I)$ 在全部可行配比上给出同一函数. 这正是定义~\ref{def:bg-identifiability} 所述的参数不可识别：存在非零参数方向而预测函数在全部可行设计点上不变. 岭惩罚确定一个数值表示, 但单个对角系数并非可识别的领域效应. 
+
+\textbf{模型性质：球面约束下的一阶梯度}
+在球面内部点, 令 $f(\boldsymbol\phi)=b_0+\boldsymbol a^\top\boldsymbol\phi+\boldsymbol\phi^\top\mathbf B\boldsymbol\phi$. 其欧氏梯度为 $\nabla f=\boldsymbol a+2\mathbf B\boldsymbol\phi$. 单位球面在 $\boldsymbol\phi$ 处的一阶可行方向满足 $\boldsymbol\phi^\top\boldsymbol z=0$. 由命题~\ref{prop:bg-orthogonal-projection}, 约束梯度为
+\begin{equation}\label{eq:q1-riem-grad-v13}
+\operatorname{grad} f(\boldsymbol\phi)
+=(\mathbf I-\boldsymbol\phi\boldsymbol\phi^\top)
+(\boldsymbol a+2\mathbf B\boldsymbol\phi).
+\end{equation}
+若该向量非零, 则切向量中的最陡下降方向是
+$-\operatorname{grad} f/\|\operatorname{grad}f\|_2$. 式~\eqref{eq:q1-riem-grad-v13} 因而只保留不改变 $\|\boldsymbol\phi\|_2$ 的切向分量；径向分量不对应可行的配比一阶变化. 本文仍只在已观测候选集内选配方, 以避免把几何上的可优化性解释为统计上的可外推性. 
+
+训练折内对连续多项式特征逐列标准化, 截距不惩罚, 岭估计的目标为
+\begin{equation}\label{eq:q1-ridge-v9}
+(\widehat b_j, \widehat{\boldsymbol\theta}_j)=\argmin_{b, \boldsymbol\theta}
+\bigl\|\boldsymbol Y_j-b\one-\widetilde{\mathbf X}\boldsymbol\theta\bigr\|_2^2
++\lambda_{\mathrm{ridge}}\|\boldsymbol\theta\|_2^2, 
+\qquad \lambda_{\mathrm{ridge}}=0.1.
+\end{equation}
+式~\eqref{eq:q1-matrix-v9} 给出可检查的预测函数, 不赋予冗余系数独立的领域贡献解释. 在 $p_a>0$ 的单纯形内部, 对满足 $\one^\top\boldsymbol v=0$ 的可行切向量, 锚点函数差的方向导数为
+\begin{equation}\label{eq:q1-tangent-v9}
+D\DeltaJ(\pvec)[\boldsymbol v]
+=\sum_{a=1}^{17}\frac{[\boldsymbol a+2\mathbf B\boldsymbol\phi]_a}{2\sqrt{p_a}}v_a.
+\end{equation}
+%该式由 $d\sqrt{p_a}/dp_a=1/(2\sqrt{p_a})$ 和二次型的对称性推出. 它只沿单纯形切向量有配比意义；当某个 $p_a=0$ 时分母可发散, 本文改用有限替换路径而不外推边界导数. 
+
+模型含 $170$ 个多项式特征, 岭惩罚为 $\lambda_{\mathrm{ridge}}=0.1$. 式~\eqref{eq:sqrtquad} 的结构可直接检查；由于 $\sum_i p_i=1$ 带来系数冗余, 系数值并非独立的领域贡献. 函数在闭单纯形上连续, 但含根号的项在零比例边界一般不可微. 下文均以 $\widehat J$ 表示这一平方根坐标下的综合响应面, 不另设重复符号. 
+
+候选集共 $16$ 个配置：原有 $13$ 种模型, 加上式~\eqref{eq:sqrtquad} 的同一平方根全二次结构在 $\lambda_{\mathrm{ridge}}=0.1, 1, 10$ 下的三个岭回归配置. 最终选型在全部 $512$ 组 A4/A5 数据上进行：五折交叉验证重复三次, 共形成 $15$ 个验证折, 以逐折十三域宏平均 RMSE 的平均值排序, 并在全部数据上重拟合胜出模型. 另在同一数据上做一次外层五折、内层三折的嵌套验证：每个外层训练集只用其内层三折选择候选, 再在该外层留出折上评价选型流程；外层结果不参与最终选型. 表~\ref{tab:model} 给出主要候选的重复交叉验证成绩及历史 1M 参照结果. 
+\begin{table}[H]\centering\small
+\caption{A4/A5 交叉验证与 A6/A7 历史参照表}\label{tab:model}
+\begin{tabular}{lrrr}\toprule
+模型 & CV macro RMSE & 1M macro RMSE & 1M 目标 Spearman\\\midrule
+平方根二次岭, $\lambda_{\mathrm{ridge}}=0.1$ & \textbf{0.04453} & \textbf{0.03781} & \textbf{0.9602}\\
+既有平方根 RBF 核岭 & 0.04583 & 0.03822 & 0.9528\\
+固定极端随机树基线 & 0.08096 & 0.07344 & 0.9274\\
+旧正交对比坐标二次岭 & 0.08497 & 0.07654 & 0.7976\\
+常数均值 & 0.14725 & -- & --\\\bottomrule
+\end{tabular}
+\end{table}
+表~\ref{tab:model} 汇总 A4/A5 的重复交叉验证结果以及 A6/A7 的历史参照结果. RMSE 统一按 A5 域均值归一化,  1M 目标的 Spearman 相关系数采用同一固定 A5 标尺计算. A6/A7 标签未参与模型拟合,  在本文中作为历史参照结果单独报告.
+
+平方根二次面相对既有平方根 RBF 的 CV 均值差为 $0.001304$, 即约 $2.85\%$, 小于前者的折间标准差 $0.001954$. 两者同折比较时, 前者在 $15$ 折中的 $12$ 折较低. 两种模型共享训练行和重复验证行, 不能把 $15$ 折误当独立样本, 重复交叉验证的重叠校正给出双侧 $p\approx0.179$, 且这一事后比较没有校正 $16$ 种候选的选型. 嵌套验证的五个外层折均在内层选中平方根 RBF. 故本文按完整训练集 CV 排序规则采用平方根二次面, 同时不宣称它在总体上优于平方根 RBF. 相对固定树和正交对比二次面的近半误差降幅主要属于平方根坐标族, 而不是某一种具体二次结构独有的优势. 
+\begin{figure}[H]\centering
+\includegraphics[width=0.95\linewidth]{q1_cv_model_comparison.pdf}
+\caption{第一问重复交叉验证的模型表现与同折误差对照图}\label{fig:q1-cv-contrast-v11}
+\end{figure}
+图~\ref{fig:q1-cv-contrast-v11} 展示第一问重复交叉验证下的模型对照结果,  从模型族整体表现和同族模型细粒度差异两个层面验证模型选择的合理性. 左图给出四个代表候选模型的宏平均 RMSE 及折间标准差,  可以直观看出不同模型族之间较为清晰的性能差距,  体现平方根坐标建模在误差控制上的良好表现. 右图进一步比较相同验证折上平方根二次岭与平方根 RBF 的 RMSE 差值,  负值表示平方根二次岭取得更低误差；在 15 个验证折中,  平方根二次岭有 12 折表现更优,  显示出较好的跨折稳定性. 图中误差线表示重复验证折上的标准差,  用于刻画不同数据划分下模型误差的波动程度. 这种“模型族整体比较 + 同折直接对照”的验证方式既能够识别主要性能提升来源,  又能够细致呈现候选模型之间的差异,  使最终模型选择具有更充分、直观且可复核的数值依据.
+\begin{figure}[H]\centering
+\includegraphics[width=0.68\linewidth]{q1_mixture_1m_validation.pdf}
+\caption{平方根二次岭在 A6/A7 的 256 组候选配方上的相对 Loss 预测. }\label{fig:pred}
+\end{figure}
+图~\ref{fig:pred} 对照所选响应面在 1M 检验候选上的预测与观测. 模型仅在给定配方附近得到验证, 故首选配方从已观测候选集合选出, 不把式~\eqref{eq:sqrtquad} 连续优化至训练支持以外的单纯形角点. 
+上述定义已经给出第一问的完整数学接口：文档级信号经统一方向和组权得到质量代理, 域级聚合只在可观测域上进行；配比模型在平方根坐标中拟合, 并以已观测候选集上的验证误差决定候选方案. 后续主计算的质量域映射限制在表~\ref{tab:qmap} 可核验的六个域内；前述扩展域映射仅是条件敏感性情景. 
+
+
+
+\subsection{模型验证、跨尺度预测与第一问结论}
+
+建立响应面之后, 第一问真正需要回答的是两个更严格的问题：模型能否在未参与拟合的配方上保持排序能力, 以及这种能力能否跨参数尺度迁移. 前者决定响应面是否可用于候选选择, 后者决定其结果能否直接进入后续大模型情景. 本文因此将“同尺度验证”和“跨尺度压力测试”分开报告. 
+
+对规模 $s$ 的候选集合 $\mathcal T_s$, 令 $J_s$ 按该表自身十三域均值标准化真实 Loss, 仅用于评价排序；另令 $\widetilde J_s$ 按 A5 的 $\bar{\mathcal L}_j$ 标准化同一 Loss. 模型选择均不读取两种检验目标. 给定其中任一目标 $K_s$, 候选集后悔值定义为
+\begin{equation}\label{eq:regret}
+R_s(K)=
+\frac{K_s(\widehat{\pvec}_s)-\min_{\pvec\in\mathcal T_s}K_s(\pvec)}
+{\min_{\pvec\in\mathcal T_s}K_s(\pvec)}.
+\end{equation}
+后悔值 $R_s(K)$ 是一个决策指标：它不要求模型准确预测每个候选的绝对 Loss, 而只衡量被冻结的选择相对该候选表真实最优值损失了多少. $R_s=0$ 表示在给定候选集与给定目标口径下选择正确；它不意味着连续单纯形上的全局最优. 不同标尺可改变真最优行与后悔值；预测首选行只由已冻结模型决定. 60M 和 1B 仅报告排序及选择质量, 不把 1M 训练得到的数值标尺当作跨规模绝对 Loss 预测. 
+\Needspace{13\baselineskip}
+\subsubsection{响应误差到配比选择的决策保证}
+
+式~\eqref{eq:regret} 用已观测候选表评价选择结果. 要在选择之前控制可能的损失, 还需把预测误差转换为决策误差. 以下命题固定候选集合和目标标尺, 不跨不同尺度或归一化方式混用误差. 
+
+\begin{proposition}[配比选择的误差与后悔界]\label{prop:q1-decision-regret-v37}
+设 $\mathcal P$ 为非空有限候选集合, $J$ 与 $\widehat J$ 分别为同一口径的真实目标和预测目标. 若
+\[
+\max_{\pvec\in\mathcal P}|J(\pvec)-\widehat J(\pvec)|\le\varepsilon, 
+\qquad
+\widehat J(\widehat{\pvec})\le\min_{\pvec\in\mathcal P}\widehat J(\pvec)+\varepsilon_{\mathrm{sel}}, 
+\]
+其中 $\varepsilon, \varepsilon_{\mathrm{sel}}\ge0$ 分别为候选集合上的一致预测误差界和候选选择的优化误差界, 则
+\begin{equation}\label{eq:q1-decision-regret-v37}
+0\le J(\widehat{\pvec})-J_{\min}\le2\varepsilon+\varepsilon_{\mathrm{sel}}, 
+\quad J_{\min}:=\min_{\pvec\in\mathcal P}J(\pvec).
+\end{equation}
+若 $J_{\min}>0$, 相对后悔值进一步不超过 $(2\varepsilon+\varepsilon_{\mathrm{sel}})/J_{\min}$. 
+\end{proposition}
+\begin{proof}
+取 $\pvec_*\in\argmin_{\mathcal P}J$, 依次使用一致误差界和预测近优性, 得
+\[
+J(\widehat{\pvec})\le\widehat J(\widehat{\pvec})+\varepsilon
+\le\widehat J(\pvec_*)+\varepsilon_{\mathrm{sel}}+\varepsilon
+\le J(\pvec_*)+2\varepsilon+\varepsilon_{\mathrm{sel}}.
+\]
+非负性来自真实最优值的定义；正分母下相除得到相对界. 
+\end{proof}
+
+该界将响应面拟合和候选选择连接起来, 符合决策导向预测的基本思想\cite{elmachtoub_spo}. 如果一致误差界以概率至少 $1-\zeta$ 成立, 则后悔界在同一事件上成立；普通交叉验证 RMSE、逐点区间或单次重抽样百分位均不能直接代入为 $\varepsilon$. 
+
+\textbf{模型集合内的相对基线改进:}
+设 $\mathcal C$ 为非空的候选响应模型集合, 基线为 $\pvec^{(0)}$. 定义
+\begin{equation}\label{eq:q1-safe-improvement-v37}
+U(\pvec):=\sup_{\theta\in\mathcal C}
+\{J_\theta(\pvec)-J_\theta(\pvec^{(0)})\}.
+\end{equation}
+若 $U(\pvec)<0$, 则该配比在 $\mathcal C$ 中每个模型下都严格优于基线；这是上确界定义的直接结果. 
+平方根二次面、核模型及其联合参数扰动可形成明确声明的模型集合, 但有限情景不自动覆盖真实机制. 因此式~\eqref{eq:q1-safe-improvement-v37} 给出模型集合内的安全选择准则, 未改变下文已经冻结的候选行与验证结果. 跨问传递仍采用完整响应差 $\widehat J(\pvec)-\widehat J(\pvec^{(0)})$, 而非将局部探针的线性化外推到任意远配比. 
+
+
+\begin{table}[H]\centering\scriptsize
+\setlength{\tabcolsep}{2.5pt}
+\caption{冻结平方根二次面在历史候选表上的排序表}\label{tab:scale}
+\begin{tabular}{lrrrrrrrl}\toprule
+& & \multicolumn{3}{c}{按本表均值 $J_s$} & \multicolumn{3}{c}{按 A5 均值 $\widetilde J_s$} &\\
+\cmidrule(lr){3-5}\cmidrule(lr){6-8}
+规模 & 候选数 & Spearman & 首选/真最优行 & 后悔值 & Spearman & 真最优行 & 后悔值 & 数据属性\\\midrule
+A6/A7 1M & 256 & 0.960 & 239/239 & 0.000\% & 0.960 & 239 & 0.000\% & 实测\\
+A8/A9 60M & 256 & 0.931 & 239/239 & 0.000\% & 0.934 & 219 & 0.445\% & 实测\\
+A10/A11 1B & 64 & 0.701 & 13/46 & 0.512\% & 0.714 & 13 & 0.000\% & 实测\\
+A12/A13 10B & 63 & $-0.681$ & 16/45 & 21.406\% & $-0.673$ & 45 & 21.265\% & 估算\\
+A14/A15 70B & 63 & $-0.789$ & 16/32 & 31.768\% & $-0.786$ & 32 & 31.430\% & 估算\\\bottomrule
+\end{tabular}
+\end{table}
+
+表~\ref{tab:scale} 汇总冻结后的平方根二次面在历史候选表上的排序结果. 前组按照对应检验表自身均值 $J\_s$ 计算,  后组按照 A5 均值 $\tilde{J}\_s$ 计算；10B 和 70B 用于检验模型在更大尺度条件下的估算表现. 各行行号均按对应候选表内部顺序自 1 起计,  便于与原始候选记录逐项对应.
+
+\textbf{证据结论：} 表~\ref{tab:scale} 展示了清晰的跨尺度证据层次. 在 1M 候选集上,  两种标尺均稳定选中第 239 行,  Spearman 相关系数达到 $0.960$,  表明模型对该尺度下的最优配比具有较好的识别能力；在 60M 上,  排序相关仍保持在约 $0.93$,  显示出较强的排序一致性,  尽管最优行会随评价标尺变化；在 1B 上,  排序相关约为 $0.70$,  仍保留一定的候选排序信息. 当尺度进一步扩展至 10B 和 70B 时,  Spearman 相关分别约为 $-0.68$ 和 $-0.79$,  后悔值超过 $21\%$ 和 $31\%$,  从而清楚标示出当前冻结模型的跨尺度适用范围.据此,  第 239 行记为 1M 实测候选集内的最优配比 $\pvec^\star$,  用于后续相应条件情景分析；后续主计算的训练配比锚点仍采用 A4 第 170 行的 $\pvec^{(0)}$. 10B 和 70B 的估算结果则作为跨尺度压力测试,  用于识别模型外推边界,  从而使后续分析能够明确区分实测支持范围与条件外推范围.
+
+
+\textbf{外推表失效机制的诊断:} 表~\ref{tab:scale} 的负相关需要区分\textbf{跨域水平}与\textbf{配比形状}两条通道, 二者对结论的含义完全不同. 对每一档规模, 把逐域预测与逐域观测分别按该表自身的 A5 训练均值归一化, 再计算两种相关：\textbf{水平通道}取每行十三域归一化损失的均值作为该配方的汇总量, \textbf{形状通道}先减去该行自身的十三域均值, 再汇总全部 $n\times13$ 个中心化元素. 结果见表~\ref{tab:q1-extrapolation-diagnostic-v41}. 
+
+\begin{table}[H]\centering\small
+\caption{响应面的跨尺度迁移诊断}
+\label{tab:q1-extrapolation-diagnostic-v41}
+\begin{tabular}{lrrrrr}\toprule
+规模 & 候选数 & 数据属性 & \multicolumn{2}{c}{水平通道} & 形状通道 \\
+\cmidrule(lr){4-5}
+ & & & Spearman & 最大绝对误差 & Spearman \\\midrule
+1M & 256 & 实测 & $+0.9602$ & $0.0481$ & $+0.9606$ \\
+60M & 256 & 实测 & $+0.9342$ & $0.3465$ & $+0.7166$ \\
+1B & 64 & 实测 & $+0.7135$ & $0.5628$ & $+0.6764$ \\
+10B & 63 & 估算 & $-0.6726$ & $0.8783$ & $+0.9779$ \\
+70B & 63 & 估算 & $-0.7861$ & $0.9554$ & $+0.9774$ \\\bottomrule
+\end{tabular}\end{table}
+表~\ref{tab:q1-extrapolation-diagnostic-v41} 给出响应面的跨尺度迁移诊断结果. 其中,  水平通道采用十三个领域归一化损失的行均值,  用于统一比较不同尺度下响应面的整体变化与迁移表现.
+
+水平与形状双通道诊断给出一个可检验的结构性结论：\textbf{配比形状通道在全部五档规模上保持强正相关}（$+0.96$、$+0.72$、$+0.68$、$+0.98$、$+0.98$）, 而\textbf{跨域水平通道在 10B/70B 反转为负}. 逐域分解进一步确认这一点（图~\ref{fig:q1-extrapolation-diagnostic-v41}）：在 1M 档, 13 个验证域的域内 Pearson 相关为 $0.929$--$0.993$；在 70B 档仍有 12 个域为正, 仅有 hackernews 为 $-0.046$, dm\_mathematics 与 arxiv 分别保持 $0.909$ 与 $0.745$. 
+
+因此 A12--A15 的负相关意为跨域基线排序在大于 $1B$ 的尺度上被重新排列：模型仍能正确预测“同一配方内各域的相对高低”, 但其预测的域间绝对水平与真实域间水平不再同序, 而后者在十三域宏平均汇总时占据主导. 这一机制与更早出现的标尺敏感性方向一致：60M 档的真最优行随归一化方式由第 239 行变为第 219 行, 1B 档则由第 46 行变为第 13 行（表~\ref{tab:scale}）. 由此, A12--A15 的稳健性结论可精确表述为：\textbf{外推表支持“配比形状效应可跨尺度迁移”的相对比较, 不支持绝对 Loss 预测, 也不支持据其确定大尺度最优配比}；表中 10B/70B 的最优行因此不作报告. 
+\begin{figure}[H]\centering
+\includegraphics[width=0.95\linewidth]{q1_extrapolation_diagnostic.pdf}
+\caption{响应面跨尺度迁移的相关性诊断图}\label{fig:q1-extrapolation-diagnostic-v41}
+\end{figure}
+图~\ref{fig:q1-extrapolation-diagnostic-v41} 从整体结构与分域表现两个层面展示响应面的跨尺度迁移特征. 左图比较水平通道与配比形状通道在不同规模下的 Spearman 相关,  灰色区域对应估算外推表；右图给出各验证域在五档规模上的域内 Pearson 相关,  用于进一步刻画不同领域随规模变化的局部一致性.
+\begin{table}[H]\centering\small
+\caption{1M 候选集第 239 组的十七域归一化配比表}\label{tab:pstar}
+\begin{tabular}{lr@{\qquad}lr}\toprule
+训练域 & 比例 & 训练域 & 比例\\\midrule
+arxiv & 0.096 & freelaw & 0.084\\
+nih\_exporter & 0.000 & pubmed\_central & 0.019\\
+wikipedia\_en & 0.069 & dm\_mathematics & 0.028\\
+github & 0.030 & philpapers & 0.000\\
+stackexchange & 0.127 & enron\_emails & 0.000\\
+gutenberg\_pg\_19 & 0.002 & pile\_cc & 0.034\\
+ubuntu\_irc & 0.132 & europarl & 0.025\\
+hackernews & 0.000 & pubmed\_abstracts & 0.349\\
+uspto\_backgrounds & 0.005 & & \\\bottomrule
+\end{tabular}
+\end{table}
+表~\ref{tab:pstar} 给出 1M 检验候选集第 239 组在十七个领域上的配比结果. 各域比例已按行内总和统一归一化,  因而可直接比较不同领域在该候选配比中的相对占比.
+\subsubsection{参考方法与对照检验}
+
+本节用参考文献提出的四种检验方法复核前面的选择, 目的不是替换已给出的模型, 而是确认
+哪些建模简化在本题数据上确实成立. 对照均沿用同一历史候选集合并注明目标口径. 
+
+\textbf{多目标稳健性与最坏域代价（DoReMi \cite{doremi}）}
+等权平均相对损失隐含了一个选择：十三个域同等重要. 若改用逐域超额损失或最坏域口径, 
+候选排序会改变. 表~\ref{tab:q1-utility} 给出同一 256 组候选在四种目标下的最优行与统计量. 
+
+\begin{table}[H]\centering\small
+\setlength{\tabcolsep}{4pt}
+\caption{1M 检验候选集上的多目标对照表}
+\label{tab:q1-utility}
+\begin{tabular}{lrrrr}
+\toprule
+目标 & 最优行 & 该行均值 & 该行最坏域 & 该行域间标准差\\
+\midrule
+等权平均相对损失 $\frac1{13}\sum_jY_j$（本文主口径） & 239 & 0.8935 & 1.0263 & 0.1238\\
+最坏域 $\max_jY_j$ & 199 & 0.8938 & 1.0093 & 0.1283\\
+域间标准差 $\mathrm{sd}_jY_j$ & 76 & 0.9450 & 1.0874 & 0.0680\\
+平均超额损失（原始尺度） & 239 & 0.8935 & 1.0263 & 0.1238\\
+平均超额损失（按各域空间归一） & 219 & 0.9088 & 1.0211 & 0.1049\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{多目标对照的结论}
+在本文固定的十三域等权目标下, 平方根二次岭与平方根 RBF 都从同一 1M 实测候选池中选出第 239 行, 且该行也是观测最优行, 候选集内的实际后悔为零（表~\ref{tab:scale}）. 两种响应面在这一目标和候选范围内给出一致的首选. 表~\ref{tab:q1-utility} 进一步量化目标偏好带来的选择：若更重视最坏域, 可改选第 199 行, 使最坏域损失下降 $1.66\%$, 而等权平均损失仅上升 $0.038\%$；按各域可改进空间归一的超额损失则选第 219 行. 因此第 239 行是等权目标的首选, 第 199 行是最坏域优先时的备选. 与 RegMix、DoReMi 等方法及 B1、B5、C6 的补充数值对照见附录~\ref{app:q1-method-crosschecks}. 
+
+\subsubsection{锚点效应与解释边界}
+
+单纯形上增加某个领域的比例必须减少其余领域的合计比例. 取 A4 中最接近训练配方均值的实际配方 $\pvec^{(0)}$ 为锚点, 并令局部探针幅度 $\delta_{\mathrm{probe}}=0.05$. 这里的扰动是将原配方的 $5\%$ 权重向顶点 $\boldsymbol e_i$ 替换, 领域 $i$ 的实际份额增量为 $\delta_{\mathrm{probe}}(1-p_i^{(0)})$. 定义
+\begin{subequations}
+    \begin{align}\label{eq:effects}
+\pvec^{(i)}&=(1-\delta_{\mathrm{probe}})\pvec^{(0)}+\delta_{\mathrm{probe}}\boldsymbol e_i, \\
+\Delta_i&=\widehat J(\pvec^{(i)})
+          -\widehat J(\pvec^{(0)}), \\
+\Gamma_{ik}&=
+\widehat J\!\left((1-2\delta_{\mathrm{probe}})\pvec^{(0)}+
+               \delta_{\mathrm{probe}}\boldsymbol e_i+\delta_{\mathrm{probe}}\boldsymbol e_k\right)
+-\widehat J(\pvec^{(i)})
+-\widehat J(\pvec^{(k)})
++\widehat J(\pvec^{(0)}).
+\end{align}
+\end{subequations}
+负的 $\Delta_i$ 表示该锚点与扰动强度下的模型预测 Loss 降低. 负的 $\Gamma_{ik}$ 表示联合变化低于两项单域变化之和. 双域探针值按定义满足 $\Delta_i+\Delta_k+\Gamma_{ik}$.
+
+\begin{table}[htbp]\centering\small
+\caption{平方根二次响应面在锚点附近的部分有限差分.}\label{tab:effects}
+\begin{tabular}{lrr}\toprule
+方向或组合 & 点估计 & 重抽样 $95\%$ 分位区间\\\midrule
+arxiv 单域 & $-0.0131$ & $[-0.0262, -0.0063]$\\
+hackernews 单域 & $-0.0048$ & $[-0.0118, \ 0.0063]$\\
+philpapers 单域 & $-0.0040$ & $[-0.0278, \ 0.0237]$\\
+nih\_exporter 与 ubuntu\_irc 交互 & $-0.0086$ & $[-0.0214, \ 0.0021]$\\\bottomrule
+\end{tabular}
+\end{table}
+
+在 136 个双域探针中, 74 个 $\Gamma_{ik}<0$、62 个大于零. 数值最大的负交互本身仍有跨零区间. 与同样采用平方根坐标的既有 RBF 模型相比, 正确锚点下 17 个单域方向仅 12 个同号, 136 个双域交互有 112 个同号. %故即便主响应面是可写出函数式的参数模型, 也不能将全部局部符号作为稳定的领域效应. 第二问采用响应面在具体配方处相对锚点的直接差值；探针差分只用于解释和情景计算. 
+
+\input{tables/q1_single.tex}
+\input{tables/q1_pairs.tex}
+在同一锚点与 $\delta_{\mathrm{probe}}=0.05$ 下, $\Gamma_{ik}<0$ 定义为联合增配的预测 Loss 低于单域效应之和, 称局部互补；$\Gamma_{ik}>0$ 为局部替代. 表~\ref{tab:q1-v39-single} 报告全部 17 个单域扰动. 两种平方根坐标模型有 112/136 个交互方向一致, 其中 15 个的两套条件重抽样区间同向且均不跨零；表~\ref{tab:q1-v39-pairs} 列出六个代表组合. 单域中 arxiv、pubmed\_central 的降 Loss 方向与 dm\_mathematics 的升 Loss 方向在这两种模型及各自条件区间下均保持一致. %这里的筛选不含模型选择不确定性或 136 次同时比较的校正, 也不表示任意配比的因果替代关系；全量 17 与 136 项数值随复核程序归档. 
+
+%本模型的结论局限于给定损失口径和候选集合. 质量评分没有人工质量真值；事后原文诊断指标可能将代码、公式和链接误判为低质量信号. 配比模型未观测四个训练域的单域验证 Loss, 也不能把某个配比变量的统计效应解释为该域的因果收益. 10B、70B 的负相关提示估算口径下的外推风险, 应等待真实训练实验复核. 各域误差、冲突类型、重抽样区间和完整候选配比均作为附加证据保留. 
+
+\subsubsection{第一问结论及可复用范围}
+第一问得到文档质量基线和配比响应面两项可复用结果. 质量侧覆盖去重后的 261086 篇文档；六个可映射配比域在锚点中占 $31.94\%$, 其条件文档等权均值 $Q_0=0.607474$ 给出这部分数据的质量基线. 配比侧按预定的重复交叉验证规则选中平方根二次岭, 宏平均 RMSE 为 $0.044528$；在 1M 实测候选表上, 固定 A5 标尺的 RMSE 为 $0.037812$、Spearman 为 $0.960201$. 这些数值支持给定数据与目标下的配比排序, 质量基线则只对应已映射的六个域. 
+
+第二问主计算接收三个明确对象：训练锚点 $\pvec^{(0)}$ 上的条件质量基线 $Q_0$、固定 A5 标尺上相对该锚点的响应面差值 $\DeltaJ(\pvec)$, 以及 A4 第 170 行的训练锚点配比. 1M 候选集内实测最优的第 239 行配比 $\pvec^\star$ 用于条件情景. 
+% 质量评分尚缺人工盲评或下游训练真值；60M/1B 的标尺敏感性和 10B/70B 估算表的负相关限定了跨尺度应用. 因此后续计算沿用已说明的锚点与目标口径, 跨尺度效果仍须独立实测. 

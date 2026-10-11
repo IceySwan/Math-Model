@@ -1,0 +1,88 @@
+\section{技术性证明与计算支撑}\label{app:technical-proofs}
+本附录集中给出不改变主理论依赖关系、但用于数值实现或跨问接口的技术性证明. 正文保留第二问有限等价及第三问全局预算单调、有限饱和充要条件的完整证明；本附录给出拟合、风险计算和跨问接口的技术支撑. 
+
+\subsection{变量投影局部导数的推导}\label{app:q2-projection-proof}
+\begin{proof}固定正对角权矩阵 $\mathbf W$，对加权残差平方求导，有额外项 $-2\boldsymbol r^\top\mathbf W\mathbf X\partial_{\eta_j}\boldsymbol b^*$. 自由坐标满足正规方程 $\mathbf X_{\rm free}^\top\mathbf W\boldsymbol r=0$，活动坐标在该邻域固定、导数为零，故额外项消失. 自由列满秩保证局部系数解光滑. 活动集改变处须按带界子问题处理，不能直接延用此局部光滑结论. \end{proof}
+
+\subsection{稳健尺度内层唯一性的证明}\label{app:q3-robust-proof}
+\begin{proof}
+有限个严格凸函数的最大值仍严格凸，证明见背景命题~\ref{prop:bg-convex-minimum-v26}；有限常数平移不改变强制性. 故唯一极小点存在. 由 $V^-_\theta\le V_\theta\le V^+_\theta$，逐情景有 $\ell^-_\theta-V^+_\theta\le R_\theta\le\ell_\theta-V^-_\theta$，再取最大值即可. 这样不会把尚有误差的个体最优值误当作精确基准. 
+\end{proof}
+
+\subsection{固定质量参数稳定性命题的证明}\label{app:q3-stability-proof}
+\begin{proof}
+定理~\ref{thm:q3-unique-scale} 给出 $\ell_{xx}>0$. 沿紧参数线段，唯一根 $x^*(t)$ 由隐函数定理连续可微；连续正函数 $\ell_{xx}$ 在该紧轨迹上取得正最小值 $m_x$，而连续向量函数 $\nabla_{\boldsymbol\vartheta}\ell_x$ 取得有限最大范数 $L_{\vartheta}$. 对恒等式
+$\ell_x(x^*(t),Q;\boldsymbol\vartheta(t))=0$ 关于 $t$ 求导，得到
+\[
+\frac{\dd x^*}{\dd t}
+=-\frac{\nabla_{\boldsymbol\vartheta}\ell_x^{\top}
+(\boldsymbol\vartheta_1-\boldsymbol\vartheta_0)}{\ell_{xx}}.
+\]
+由 Cauchy--Schwarz 不等式，
+$|\dd x^*/\dd t|\le(L_{\vartheta}/m_x)
+\|\boldsymbol\vartheta_1-\boldsymbol\vartheta_0\|_2$；在 $t\in[0,1]$ 上积分即得式~\eqref{eq:q3-stability-x}. 因为 $\ln n^*=x^*$，式~\eqref{eq:q3-stability-n} 随即成立. 固定 $Q$ 时
+\[
+\ln d^*=\ln c-\ln(ke^{x^*}+h(Q)),\quad
+\frac{\partial\ln d^*}{\partial x^*}=-r\in[-1,0),
+\]
+故中值定理给出
+$|\Delta\ln d^*|\le|\Delta x^*|$，得到式~\eqref{eq:q3-stability-d}. 最后，
+$\partial_{\ln A}\ell_x=-\alpha\mathcal L_N=-M$，
+$\partial_{\ln B_p}\ell_x=\beta\mathcal L_Dr=M$；再次使用隐函数公式即得式~\eqref{eq:q3-stability-AB}. 
+\end{proof}
+
+\subsection{训练 FLOPs 匹配根唯一性的证明}\label{app:q4-training-root-proof}
+\begin{proof}
+固定质量下尺度驻点的一阶必要条件为 $\alpha An^{-\alpha}=\beta B_pd^{-\beta}kn/(kn+h_1)$. 代入训练约束 $d=T_H/(6n)$ 并整理即得式~\eqref{eq:q4-training-root}. 左侧关于 $\ln n$ 的对数导数为
+\[
+\alpha+\beta+1-\frac{kn}{kn+h_1}>0,
+\]
+且从零连续增至无穷，故唯一正根存在. 该推导只使用 $Q=1$ 的驻点，因此还需第三问全质量区间比较来确定完整问题的最优性. 
+\end{proof}
+
+\subsection{成本倍数与上下文缩放关系的推导}\label{app:q3-scaling-proof}
+\begin{proof}代入 $n=s_hm/k$、$kn+h=s_h(m+H)$ 并提取公共正因子即得式~\eqref{eq:q3-dimensionless-scaling}；固定其 $\Upsilon$ 解出 $c$ 即得比例式. \end{proof}
+
+\subsection{顺序反馈下的理论扩展}\label{app:q4-online-extension}
+以下结果比较同一顺序预测协议中的固定候选，不参与前述开发期定权或历史回溯选择. 
+\Needspace{13\baselineskip}
+\begin{proposition}[指数加权分位预测的累计后悔界]\label{thm:q4-online-regret-v37}
+设 $y_t=S_t/100\in[0,1]$，各候选在观测 $y_t$ 前给出归一化预测 $q_t^{(k)}\in[0,1]$，并且上一期所有候选损失在下一次预测前已可用. 固定目标分位 $\tau$，令
+\[
+\ell_t^{(k)}=\rho_\tau(y_t-q_t^{(k)})\in[0,1],\quad
+a_{t,k}=\frac{\exp\{-\eta\sum_{s<t}\ell_s^{(k)}\}}
+{\sum_{j=1}^K\exp\{-\eta\sum_{s<t}\ell_s^{(j)}\}},\quad\eta>0.
+\]
+组合 $\widehat q_t=\sum_ka_{t,k}q_t^{(k)}$ 对任意结果序列满足
+\begin{equation}\label{eq:q4-online-regret-v37}
+\sum_{t=1}^T\rho_\tau(y_t-\widehat q_t)
+-\min_k\sum_{t=1}^T\ell_t^{(k)}
+\le\frac{\ln K}{\eta}+\frac{\eta T}{8}.
+\end{equation}
+\end{proposition}
+\begin{proof}
+证明见\ref{app:q4-online-regret-v37}，采用有界损失的标准指数权重势函数论证\cite{freund_schapire}. 
+\end{proof}
+该界与可交换性无关，比较的是同一预测序列上的最佳固定候选；取 $\eta=\sqrt{8\ln K/T}$ 得 $\sqrt{T\ln K/2}$ 的累计界. 多分位共用按 $0.85$ 损失更新的权重可以保序，但上述后悔保证只对应所用目标. 实际一月、三月预测含标签延迟和重叠窗口，需按真实反馈时间构造协议或另作延迟分析，不能直接套用即时反馈界；当前晚期样本也不足以检验长期收益. 本文已有历史比较与未来情景仍使用前述冻结候选. 
+
+为检查更新次序，以两条在当期标签出现前固定的合成候选预测运行 $T=256$ 步、即时揭示标签的程序协议，观察到归一化累计后悔 $2.60$，低于式~\eqref{eq:q4-online-regret-v37} 在相同 $K=2$、$\eta=\sqrt{8\ln2/256}$ 下的上界 $9.42$. 这仅是定理实现与信息时序的合成核验，不是 C 系列真实时间窗的表现；标签延迟仍需单独建模. 
+
+顺序反馈还可用于自适应共形校准的长期经验误覆盖控制\cite{gibbs_aci}，但不能据此给任意未来时点或任意组织提供条件覆盖保证. 现有 C4 事后统一快照、评测版本变化和长期标签缺失，仍限制十二月、二十四月情景的统计解释. 
+
+\subsection{指数加权分位预测后悔界的证明}\label{app:q4-online-regret-v37}
+\begin{proof}
+令 $W_t=\sum_{k=1}^K\exp\{-\eta\sum_{s<t}\ell_s^{(k)}\}$，则 $W_1=K$. 有界变量的指数矩界给出
+\[
+\ln\frac{W_{t+1}}{W_t}
+=\ln\sum_ka_{t,k}e^{-\eta\ell_t^{(k)}}
+\le-\eta\sum_ka_{t,k}\ell_t^{(k)}+\frac{\eta^2}{8}.
+\]
+逐轮相加，并用任一候选 $k$ 的一项作为 $W_{T+1}$ 的下界，得到
+\[
+-\eta\sum_t\ell_t^{(k)}-\ln K
+\le\ln\frac{W_{T+1}}{W_1}
+\le-\eta\sum_{t,k}a_{t,k}\ell_t^{(k)}+\frac{T\eta^2}{8}.
+\]
+移项后对 $k$ 取最小，再由命题~\ref{prop:q4-convex-aggregate-v37} 用组合损失替代加权损失，即得式~\eqref{eq:q4-online-regret-v37}. 该论证按实际可用的历史反馈更新权重，故标签延迟需要额外处理. 
+\end{proof}
+\resetappendixfloats

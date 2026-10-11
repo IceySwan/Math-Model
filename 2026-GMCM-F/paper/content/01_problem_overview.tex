@@ -1,0 +1,98 @@
+\section{问题重述与建模思路}\label{sec:overview}
+
+本题研究算力受限时参数规模 $N$、训练数据量 $D$、数据质量 $Q$ 和领域配比 $\pvec$ 对语言模型能力的共同作用. 本文围绕\textbf{质量识别与配比决策、有效数据量折算、全局资源配置、有序能力前沿}四个递进环节展开. 先确定数据能够识别的质量与配比信息，再建立其与损失的替代关系，进而证明最优配置随预算变化的规律，最后构造具有形状约束和误差控制的能力前沿. 前三问的响应量是验证交叉熵损失 $\mathcal L$，第四问的响应量是基准测试得分 $S$, 二者通过可比资源情景及同口径检验建立联系. 
+
+\subsection{问题重述}
+\noindent\textbf{问题一:质量评价与配比选择.}
+将 22 项质量指标同向化，建立文档及域级评分，分析指标冲突并在扩展数据上检验. 在 17 域概率单纯形上刻画配比与 Loss 的关系. 数学上需要解决质量域映射不完整时的识别问题，以及响应面预测误差如何影响最终配比选择. \\
+\noindent\textbf{问题二：质量、数据与参数的替代关系.}
+建立包含 $N,D,Q,\pvec$ 的广义标度律，衔接经典 $N$--$D$ 模型，给出边际效用、弹性及领域替代或互补的解释，并计算 $Q$ 提高 $0.1$ 的等效参数量. 核心是把质量和配比统一为有效数据状态，区分局部替代率与有限变化的精确等价关系. \\
+\noindent\textbf{问题三：预算最优配置及结构性转移.}
+在训练、质量处理与注意力成本的总和不超过 $C$ 时选择资源配置，比较三类质量成本、至少三档预算及 C7 给定的上下文长度，并说明配比是否能够联立优化. 需要确定全局最优解的预算变化方向、质量达到模型上界的条件，以及高预算下参数量和数据量的增长规律. \\
+\noindent\textbf{问题四：历史增长分解与能力前沿.}
+统一综合能力、开放模型筛选、预训练与后训练类型及时间口径，量化规模与非规模因素的观察性份额，检验 Loss--Benchmark 映射，并给出算力增长放缓时 12, 24四个月的条件前沿. 数学上需要同时处理分位函数的有序性、全局求解和区间校准的适用条件. 
+
+\subsection{建模框架与跨问衔接}
+
+质量与领域配比首先通过训练分布作用于验证损失. 对领域 $a$，以 $P_a^{\boldsymbol\xi_a}$ 表示语料状态 $\boldsymbol\xi_a$ 下的分布.令 $Z=(H_{\mathrm{ctx}},Y)$ 表示由上下文 $H_{\mathrm{ctx}}$ 与下一 Token $Y$ 构成的训练样本, 并定义单样本交叉熵损失$\ell_{\boldsymbol\theta}(Z):=-\ln p_{\boldsymbol\theta}(Y\mid H_{\mathrm{ctx}})$. 在模型规模与训练规程固定时, 有
+\begin{subequations}\label{eq:v40-data-loss-mechanism}
+\begin{align}
+R_{\mathrm{tr}}(\boldsymbol\theta;\pvec,\boldsymbol\xi)
+&:=\sum_{a=1}^{17}p_a\,\E_{Z\sim P_a^{\boldsymbol\xi_a}}\ell_{\boldsymbol\theta}(Z),\\
+\boldsymbol\theta^*(\pvec,\boldsymbol\xi)
+&\in\argmin_{\boldsymbol\theta}R_{\mathrm{tr}}(\boldsymbol\theta;\pvec,\boldsymbol\xi),\\
+\mathcal L_{\mathrm{val}}(\pvec,\boldsymbol\xi)
+&:=\E_{Z\sim P_{\mathrm{val}}}\ell_{\boldsymbol\theta^*(\pvec,\boldsymbol\xi)}(Z).
+\end{align}
+\end{subequations}
+式~\eqref{eq:v40-data-loss-mechanism} 给出引入数据因素的机制依据, 效应方向和大小仍由具体响应模型及来源内数据确定. 
+
+\Needspace{8\baselineskip}
+第一问提供训练锚点 $\pvec^{(0)}$ 上的条件质量均值 $Q_0$，以及固定 A5 标尺上的响应差 $\psi(\pvec):=\DeltaJ(\pvec)=\widehat J(\pvec)-\widehat J(\pvec^{(0)})$. 第二问按来源 $s$ 估计质量响应 $g_s$；记 $n:=N/10^9$、$d:=D/10^9$、$c:=C/10^{18}$，前三问依次构成
+\begin{subequations}\label{eq:unified-chain-v9}
+    \begin{align}
+\mathcal G_s(Q)&:=e^{-g_s(\ln Q)/\beta_s},\quad
+d_{\mathrm{eff},s}:=d\mathcal G_s(Q)e^{-\lambda_{\mathrm{mix}}\psi(\pvec)},\\
+\mathcal L_s&:=E_s+A_sn^{-\alpha_s}+B_sd_{\mathrm{eff},s}^{-\beta_s},\\
+(n^*,d^*,Q^*)&\in\argmin_{\substack{n,d>0,\ d[kn+h(Q)]\le c\\Q_0\le Q\le1}}
+\mathcal L_{B6}(n,d,Q;\pvec^{(0)}).
+\end{align}
+\end{subequations}
+其中 $k:=6+\eta_{\mathrm{att}}L_{\mathrm{ctx}}$，$h(Q):=[c_Q(Q)-c_Q(Q_0)]/10^9$ 为质量处理增量成本，$c_Q$ 与质量响应 $g_s$ 分别描述代价和收益. 锚点数据不能识别配比传递系数 $\lambda_{\mathrm{mix}}$，故第三问主优化固定 $\pvec=\pvec^{(0)}$，其他配比作为条件情景. $Q_0$ 与 B6 质量等级共用标尺也是额外假设. 第四问接收最优配置的训练算力 $C_{\mathrm{train}}=6ND$，再用附件 C 估计能力前沿, 包含处理与注意力开销的总预算不直接作为训练算力使用. 
+
+\subsection{核心理论与方法贡献}
+四问的理论链由识别边界、有效数据替代、预算下包络和有序能力前沿组成. 各结论的精确条件与证明放在对应问题的正. 本节说明它们如何支撑题目答案，数值证据见表~\ref{tab:v42-answer-index} 所指位置. \\
+\textbf{质量与配比:}
+命题~\ref{prop:background-quality-bound} 把未映射领域的完整质量限制在\textbf{可达区间}内. 命题~\ref{prop:q1-quality-collinearity-v15} 说明固定域质量的配比试验不能分别识别质量与配比系数. 第一问因此分别构造质量代理与\textbf{平方根配比响应面}. 对有限候选，命题~\ref{prop:q1-decision-regret-v37} 将一致预测误差传给选择后悔；\textbf{交叉验证 RMSE} 只评价平均预测表现，不能充当该命题的一致误差前提. \\
+\textbf{质量与资源的有限替代:}
+第二问按来源建立有效数据量. 定理~\ref{thm:q2-log-marginal-v14} 由 Loss 对有效数据量的\textbf{严格单调性}得到质量、Token 和配比的等 Loss 条件. 命题~\ref{prop:q2-finite-substitution-v15} 再给出有限质量提升的等效参数规模及存在条件. \textbf{中心化秩一条件}~\ref{prop:q2-rank-one-v37} 可检验共同质量响应的必要结构. B6 的分组\textbf{误差支持曲率}响应的来源内选型，不证明跨来源质量机制相同. \\
+\textbf{预算下包络与有限饱和:}
+第三问的关键结构是将质量方案写成关于参数规模 $n$ 的仿射成本族，
+$\mathbf{\mathscr H(n)=\min_{Q\in[Q_0,1]}e^{g(\ln Q)/\beta}[kn+h(Q)]}$.
+固定质量的唯一资源对由定理~\ref{thm:q3-unique-scale} 保证. 下包络使不同预算的全局解可以直接比较，得到参数量严格增加、质量不下降的定理~\ref{thm:q3-global-monotonicity-v37}，并导出有限预算达到质量上界的充要条件~\ref{thm:q3-finite-saturation-iff-v37}\textbf{ 局部触边}、首次全局转移与充分预算界是不同量，均需与第三问的程序结果逐项核对. \\
+\textbf{有序能力前沿:}
+第四问用统一六任务得分拟合\textbf{联合分位}. 定理~\ref{thm:q4-ordered-quantile-qp} 在声明域内以有限顶点约束保证分位有序，并将拟合化为可求\textbf{全局解的凸规划}. 推论~\ref{cor:q4-slope-gap-v37} 把数值目标间隙传为\textbf{共享斜率误差界}. 形状与求解保证不等于历史预测有效性，后者由开发期、复用晚期和整组织留出分别检验, 未来点位于声明域外时仅作条件情景解释. 
+
+\subsection{技术路线与理论成果}\label{sec:overview-roadmap}
+
+图~\ref{fig:four-question-roadmap} 将四问组织为“质量识别与配比决策、有限资源替代、预算内全局配置、条件能力前沿”的递进路线. 左列概括核心定理与方法，右列给出定稿程序保存的测试结果，跨问箭头标明实际传递量，各项解析保证与数值证据按其适用范围对应. 
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{fig_roadmap.pdf}
+\caption{四问的技术路线、核心理论成果与程序测试结果 }
+\label{fig:four-question-roadmap}
+\end{figure}
+
+\subsection{题目要求与解答概述}\label{sec:answer-index}
+
+表~\ref{tab:v42-answer-index} 把四问的直接要求与本文答案、出处逐条对应，便于核对结论的适用范围；每条答案的证据等级（模型内解析、来源内经验、跨来源条件迁移）在该条备注中保留. 此处只给出结论与出处，推导见相应小节，模型的优缺点与改进方向见第~\ref{sec:conclusion} 节. 
+
+\begin{table}[H]\centering\scriptsize
+\setlength{\tabcolsep}{3pt}
+\caption{题目要求与本文答案对照及出处表}\label{tab:v42-answer-index}
+\begin{tabular}{P{3.8cm}P{8.9cm}P{2.2cm}}\toprule
+题目要求 & 本文答案 & 出处\\\midrule
+一·质量评分与聚合 & 22 项指标统一为“越高越好”，按模型／DSIR／表面三组加权合成并 clip；域级取文档等权均值，全量去重后 261086 篇、7 个质量域 & 3.1.1，表~\ref{tab:q}、\ref{tab:qtok}\\
+一·冲突定义与消解 & $H_i$ 为组间分歧诊断（$0.70/0.30$ 阈值下 A1 为 $2.99\%$），$P_i,A_i$ 为两类污染型矛盾的显式扣分；消融显示惩罚仅改变 $Q_0$，定位为局部修正 & 3.1.2，表~\ref{tab:q1-penalty-ablation}\\
+一·配比与 Loss 的关系 & 平方根坐标全二次岭：重复 CV 宏平均 RMSE $0.04453$；A6/A7 上 RMSE $0.037812$、Spearman $0.960201$；选定第 239 行且观测后悔为零 & 3.2，表~\ref{tab:model}、\ref{tab:scale}\\
+一·外推稳健性（A12--A15） & 负相关（10B/70B 为 $-0.67/-0.79$）来自跨域水平通道，配比形状通道在五档规模上保持 $+0.68$ 至 $+0.98$；故只支持形状效应迁移，不支持绝对 Loss 预测 & 3.3.1，表~\ref{tab:q1-extrapolation-diagnostic-v41}\\
+二·广义标度律 & $\mathcal L_s=E_s+A_sn^{-\alpha_s}+B_sd_{\mathrm{eff},s}^{-\beta_s}$，$d_{\mathrm{eff}}=d\mathcal G_s(Q)e^{-\lambda_{\mathrm{mix}}\psi}$；$Q=1$ 且锚点配比时精确退化为经典形式 & 4.1.2，定义~\ref{def:q2-quality-response}\\
+二·边际效用与弹性 & $\gamma(Q_0)=1.88464$、$\gamma(1)=2.40532$；B1 分支的经典指数与文献四位有效数字一致 & 4.3.3，表~\ref{tab:q2-v26-validation}\\
+二·质量与规模的替代条件 & 命题~\ref{prop:q2-finite-substitution-v15} 给出有限等价与等效规模；$N=1$B、$D=150$B、$Q_0$ 下质量提高 $0.1$ 等效于旧质量下 $1.23452$B；等效解存在的充要条件为 $H>0$ & 4.2，命题~\ref{prop:q2-finite-substitution-v15}\\
+二·领域替代或互补 & 锚点处 17 个单域探针与 136 个双域交互：74 个负交互（互补）、62 个正交互（替代），两模型同向 $112/136$组同向 & 3.3.3，表~\ref{tab:q1-v39-single}、\ref{tab:q1-v39-pairs}\\
+三·三档预算的配置 & 曲率响应下 $Q^*=1$，$(N,D)=(1.825,0.568)/(7.102,172.718)/(20.764,6163.27)$（B）；常指数响应给出 $42$ 个上界解与 $3$ 个内点解 & 5.6.1，表~\ref{tab:q3-v26-config}、\ref{tab:q3-v41-transfer}\\
+三·$L_{\mathrm{ctx}}^{\mathrm{crit}}$ 与敏感性 & 解析值 $30000$ Token；C7 五个可行值中 $32768$ 为最邻近的高侧取值；五档上下文的配置见表~\ref{tab:q3-v39-context} & 5.1.1，式~\eqref{eq:q3-v39-critical-context}\\
+三·结构性转移 & \textbf{条件答案}：名义（B6 指数与曲率响应）下三档间无质量维度转移，结构变化是质量开支份额的系统性退出（$20.75\%\to6.31\%\to2.25\%$）；把质量响应换成常指数形式后首次转移约为 $1.36\times10^{19}$，把规模指数换成真实轨迹估计后 $10^{19}$ 档最优质量退回下界 $Q_0$，两种替代设定下转移都重新出现在区间内 & 5.6.1、5.6.4、5.6.5，表~\ref{tab:q3-v41-transfer}、\ref{tab:q3-exponent-source}\\
+三·成本函数的影响 & 三类成本的 $10^{19}$ 档配置：指数 $1.8255/0.5683$、幂 $1.9338/0.5238$、对数 $1.2823/0.9366$（B，$Q^*=1$）；损失口径不同不可横向比较 & 5.6.1，表~\ref{tab:q3-v39-cost}\\
+三·数据--参数配比核对 & 三档 $D^*/N^*$ 分别为 $0.311$、$24.3$、$296.8$ token/参数；仅 $10^{22}$ 档与经典算力最优量级 $20$ 一致，$10^{19}$ 档属模型外推而非可执行配方 & 5.6.1，表~\ref{tab:q3-v41-dn-ratio}\\
+四·规模与非规模贡献 & 90 日窗口观察性分解：规模 $-2.250630$、时间残差 $+7.832644$、合计 $+5.582014$；有符号净份额 $-40.3\%$ 与 $+140.3\%$（绝对值口径 $22.3\%/77.7\%$） & 6.2.1，式~\eqref{eq:q4-shapley-v9}、图~\ref{fig:q4-decomposition-v11}\\
+四·Loss--Benchmark 桥接 & C6 高可比层 7 点留一：均值基线 RMSE $0.424448$ 优于 Loss 线性 $0.552834$ 与 Loss 岭 $0.439516$，据此在高可比层把 Loss 通道权重置零；中可比层两个 Loss 模型优于本层均值基线，但标尺不可与高层合并 & 6.2.2，表~\ref{tab:q4-bridge-v8}\\
+四·12/24 月前沿与不确定性                          & 主模型为开发期选出的近 180 日类型经验分位，不含时间趋势，故 12 与 24 月点估计相同：预训练 $33.1968$ 分、后训练 $29.4380$ 分；曲线抽样范围由 $200$ 次有效联合抽样给出，个体带未校准（历史实测覆盖 $50.0\%$--$75.0\%$，低于名义 $90\%$）                                     & 6.5.2，表~\ref{tab:q4-v39-slowdown}、\ref{tab:q4-v39-coverage}                \\
+四·算力情景的资源路径                               & 训练算力增长 $\zeta=0/0.5/1$ 对应的资源倍率（以 $C_0=10^{22}$、8192 Token 的 $Q^*=1$ 分支为锚点）：$\zeta=1$ 时 12 月 $N/D$ 倍率 $1.363/2.948$、24 月 $1.878/8.600$；这些是条件资源情景，其能力分数未经长期验证                               & 6.5.1，表~\ref{tab:q4-v39-slow-resources}、\ref{tab:q4-v26-resources}         \\
+四·经验分位基准 & 三个入选口径给出不同答案：严格口径 $33.1968/29.4380$（$n=8/4$）、许可去重口径 $18.4544/38.1002$（$n=98/773$）、最宽口径 $19.4413/33.4021$（$n=182/1873$）；后训练上的符号在两种口径间反转，故不能据此断言与经验分位外推相当 & 6.5.2，表~\ref{tab:q4-baseline-caliber}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\clearpage

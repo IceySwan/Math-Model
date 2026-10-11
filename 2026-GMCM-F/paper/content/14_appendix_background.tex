@@ -1,0 +1,455 @@
+\section{预备记号与通用数学工具与}\label{sec:math-background}
+
+本部分列出正文四问所用数学工具及相关定义如可识别性、概率单纯形与 Fisher--Rao 几何、对数弹性等, 正文保留本题主定理的假设和关键证明. 线性映射与内积记号参考 Axler\cite{axler}，信息几何参考 Amari 与 Pistone\cite{amari2016,pistone}，约束优化参考 Boyd--Vandenberghe\cite{boyd}，分位数与 Pinball 损失参考 Koenker\cite{koenker}. 
+
+\paragraph{基本记号. \quad}
+对非空集合 $\mathcal A$ 与实函数 $f$，$\inf_{x\in\mathcal A}f(x)$ 表示函数值集合的下确界，即所有下界中的最大者；定义
+\[
+\argmin_{x\in\mathcal A}f(x)
+:=\left\{x\in\mathcal A:\ f(x)=\inf_{y\in\mathcal A}f(y)\right\}.
+\]
+当下确界未被任何点取得时，$\argmin$ 可以为空. 若 $U\subseteq\mathbb R^m$ 为开集，记 $f\in C^1(U)$ 表示 $f$ 在 $U$ 上可微且一阶偏导数连续. 
+
+\subsection{梯度与约束方向}\label{sec:bg-differential}
+
+多元函数在约束集上的局部变化可由方向导数描述. 对可微映射，方向导数由 Jacobian 作用于方向向量得到；对标量函数，则退化为梯度与方向向量的内积. 
+
+\begin{definition}[一阶可行方向]\label{def:bg-feasible-direction}
+设约束写成 $a(\mathbf x)=0$，且 $a$ 可微. 若从可行点 $\mathbf x$ 沿方向 $\mathbf u$ 做小扰动仍希望在一阶近似下保持约束，则必须有
+\[
+Da(\mathbf x)[\mathbf u]=\nabla a(\mathbf x)^\top\mathbf u=0.
+\]
+满足该等式的 $\mathbf u$ 称为该等式约束的一阶可行方向. 
+\end{definition}
+
+对单个等式约束 $a(\mathbf x)=0$，所有满足 $\nabla a(\mathbf x)^\top\mathbf u=0$ 的一阶可行方向构成一个线性子空间；当 $\nabla a(\mathbf x)\neq0$ 时，该子空间的维数为 $m-1$. 
+
+
+\begin{proposition}[正交投影与约束梯度]\label{prop:bg-orthogonal-projection}
+设 $\mathbf q\in\mathbb R^m$ 为单位向量，超平面
+\[
+H_{\mathbf q}:=\{\mathbf z\in\mathbb R^m:\mathbf q^\top\mathbf z=0\}.
+\]
+则
+\[
+\mathbf P_{\mathbf q}:=\mathbf I-\mathbf q\mathbf q^\top
+\]
+是到 $H_{\mathbf q}$ 的正交投影矩阵. 若 $f:\mathbb R^m\to\mathbb R$ 可微，则 $f$ 在约束方向空间 $H_{\mathbf q}$ 上的一阶梯度为
+\begin{equation}\label{eq:bg-projected-gradient}
+\nabla_H f=\mathbf P_{\mathbf q}\nabla f.
+\end{equation}
+若 $\nabla_H f\neq0$，所有满足 $\mathbf z\in H_{\mathbf q}$、$\|\mathbf z\|_2=1$ 的方向中，最陡下降方向为 $-\nabla_H f/\|\nabla_H f\|_2$. 
+\end{proposition}
+
+\begin{definition}[参数的结构可识别性]\label{def:bg-identifiability}
+设模型输出写成 $m(x;\boldsymbol\theta)$，观测设计点集合为 $\mathcal X$. 若
+\[
+m(x;\boldsymbol\theta)=m(x;\boldsymbol\theta')\quad\forall x\in\mathcal X
+\]
+必然推出 $\boldsymbol\theta=\boldsymbol\theta'$，则称参数 $\boldsymbol\theta$ 在设计 $\mathcal X$ 上可识别；否则称存在不可识别参数方向. 
+\end{definition}
+
+\begin{proposition}[线性参数模型的秩判据]\label{prop:bg-linear-identifiability}
+在线性模型 $\mathbf y=\mathbf X\boldsymbol\theta$ 中，参数在给定设计矩阵 $\mathbf X$ 上唯一可识别，当且仅当
+\[
+\ker\mathbf X=\{\mathbf0\},
+\]
+即 $ \exists \mathbf h\in\ker\mathbf X$, $\forall t \in \mathbb{R}$，$\boldsymbol\theta$ 与 $\boldsymbol\theta+t\mathbf h$ 给出相同拟合值. 
+\end{proposition}
+
+\begin{lemma}[连续单调方程的唯一根]\label{lem:bg-monotone-root}
+设 $R:(0,\infty)\to(0,\infty)$ 连续且严格递增，并满足
+\[
+\lim_{x\to0^+}R(x)<a<\lim_{x\to+\infty}R(x)
+\]
+（允许两端极限分别为 $0$ 与 $+\infty$）. 则方程 $R(x)=a$ 在 $(0,\infty)$ 上恰有一个解. 
+\end{lemma}
+
+\subsection{概率单纯形与 Fisher--Rao 信息几何}\label{sec:bg-info-geometry}
+
+概率向量满足“分量非负、总和为 $1$”，因此其可行集合是概率单纯形，而不是整个 $\mathbb R^K$. 若一个分量增加，为保持总和不变，其他分量的总变化量必须相应减少. Fisher--Rao 度量为这种受约束的概率变化规定局部长度，并与相邻概率分布的统计可区分性相联系. 
+
+\begin{definition}[概率单纯形及其相对内部]\label{def:background-simplex}
+设 $K\ge2$. 定义
+\[
+\Delta_{K-1}:=\{\pvec\in\mathbb R_{\ge0}^{K}:\one^\top\pvec=1\},
+\quad
+\Delta_{K-1}^{\circ}:=\{\pvec\in\Delta_{K-1}:p_i>0\ \forall i\}.
+\]
+这里 $\Delta_{K-1}^{\circ}$ 指单纯形在仿射包络 $\{\pvec:\one^\top\pvec=1\}$ 内的相对内部. 对相对内部点 $\pvec$，约束函数为 $a(\pvec)=\one^\top\pvec-1$. 由定义~\ref{def:bg-feasible-direction}，一阶可行方向满足 $\one^\top\mathbf u=0$，故定义
+\[
+T_{\pvec}\Delta_{K-1}^{\circ}
+:=\{\mathbf u\in\mathbb R^K:\one^\top\mathbf u=0\}.
+\]
+这里 $T_{\pvec}\Delta_{K-1}^{\circ}$ 是一个 $K-1$ 维线性子空间，可理解为“在不改变总概率的前提下允许的变化方向”. 
+\end{definition}
+
+\begin{definition}[KL 散度]\label{def:bg-kl}
+对 $\pvec,\mathbf r\in\Delta_{K-1}^{\circ}$，定义
+\[
+D_{\mathrm{KL}}(\pvec\|\mathbf r)
+:=\sum_{i=1}^{K}p_i\ln\frac{p_i}{r_i}.
+\]
+KL 散度一般不对称，因此不是通常意义下的距离. 当 $\mathbf r$ 接近 $\pvec$ 时，其二阶展开在切空间 $T_{\pvec}\Delta_{K-1}^{\circ}$ 上给出局部二次型. 
+\end{definition}
+
+以下使用 Landau 大 $O$ 记号：当 $\varepsilon\to0$ 时，$R(\varepsilon)=O(\varepsilon^m)$ 表示存在常数 $C>0$ 与 $\varepsilon_0>0$，使得 $0<|\varepsilon|<\varepsilon_0$ 时有 $|R(\varepsilon)|\le C|\varepsilon|^m$. 
+
+\begin{lemma}[KL 散度的局部二阶展开]\label{lem:bg-kl-fisher}
+设 $\pvec\in\Delta_{K-1}^{\circ}$、$\mathbf u\in T_{\pvec}\Delta_{K-1}^{\circ}$，并取足够小的 $\varepsilon$ 使 $p_i+\varepsilon u_i>0$. 则
+\begin{equation}\label{eq:bg-kl-taylor}
+D_{\mathrm{KL}}(\pvec\|\pvec+\varepsilon\mathbf u)
+=\frac{\varepsilon^2}{2}\sum_{i=1}^{K}\frac{u_i^2}{p_i}+O(\varepsilon^3).
+\end{equation}
+\end{lemma}
+
+引理~\ref{lem:bg-kl-fisher} 说明：两个很接近的概率分布之间，KL 散度的一阶差异被总和约束消掉，最先出现的非零项是一个二次型. 这个二次型自然给出切空间 $T_{\pvec}\Delta_{K-1}^{\circ}$ 上的局部内积. 
+
+\begin{definition}[Fisher--Rao 度量]\label{def:bg-fisher}
+对 $\mathbf u,\mathbf v\in T_{\pvec}\Delta_{K-1}^{\circ}$，定义
+\begin{equation}\label{eq:bg-fisher}
+g_{\pvec}(\mathbf u,\mathbf v)
+:=\sum_{i=1}^{K}\frac{u_iv_i}{p_i}.
+\end{equation}
+因为 $p_i>0$，有 $g_{\pvec}(\mathbf u,\mathbf u)>0$（除非 $\mathbf u=0$），所以 $g_{\pvec}$ 在每个切空间上都是内积. 引理~\ref{lem:bg-kl-fisher} 可写成
+\[
+D_{\mathrm{KL}}(\pvec\|\pvec+\varepsilon\mathbf u)
+=\frac{\varepsilon^2}{2}g_{\pvec}(\mathbf u,\mathbf u)+O(\varepsilon^3),
+\]
+这就是 Fisher--Rao 度量与局部统计可区分性的联系\cite{amari2016,pistone}. 
+\end{definition}
+
+\begin{theorem}[平方根映射把 Fisher--Rao 几何化为球面几何]\label{thm:bg-sqrt-isometry}
+定义平方根映射
+\[
+\Phi:\Delta_{K-1}^{\circ}\to\mathbb R^K,
+\quad
+\Phi(\pvec):=(\sqrt{p_1},\ldots,\sqrt{p_K})^\top.
+\]
+则 $\|\Phi(\pvec)\|_2=1$，即 $\Phi(\pvec)$ 位于单位球面的正象限；并且对任意 $\mathbf u,\mathbf v\in T_{\pvec}\Delta_{K-1}^{\circ}$，
+\begin{equation}\label{eq:bg-sqrt-isometry}
+g_{\pvec}(\mathbf u,\mathbf v)
+=4\left\langle D\Phi(\pvec)[\mathbf u],D\Phi(\pvec)[\mathbf v]\right\rangle .
+\end{equation}
+任意光滑曲线的 Fisher--Rao 弧长等于其平方根像在单位球面上的球面弧长的$2$倍.
+\end{theorem}
+
+\begin{corollary}[Fisher--Rao 测地距离]\label{cor:bg-fr-distance}
+对 $\pvec,\mathbf r\in\Delta_{K-1}^{\circ}$，令
+\[
+\theta:=\arccos\langle\Phi(\pvec),\Phi(\mathbf r)\rangle
+=\arccos\!\left(\sum_{i=1}^{K}\sqrt{p_ir_i}\right).
+\]
+则
+\begin{equation}\label{eq:bg-fr-distance}
+d_{\mathrm{FR}}(\pvec,\mathbf r)=2\theta
+=2\arccos\!\left(\sum_{i=1}^{K}\sqrt{p_ir_i}\right).
+\end{equation}
+\end{corollary}
+
+\begin{remark}
+Fisher--Rao 度量中的 $1/p_i$ 要求 $p_i>0$，因此上述微分公式定义在单纯形内部. 当 $p_i\to0^+$ 时，对应方向的局部权重 $1/p_i$ 发散；边界点需通过内部极限或其他适用于边界的参数化处理. 
+\end{remark}
+
+\paragraph{平方根坐标的几何解释. \quad}
+平方根变换 $\phi_i=\sqrt{p_i}$ 将概率单纯形内部映射到单位球面的正象限，并把 Fisher--Rao 局部度量化为常数倍的欧氏内积. 该坐标变换规定了自然的几何尺度，但并不决定其上应采用哪一种具体统计回归模型. 
+
+\subsection{对数微分、弹性与幂律}\label{sec:bg-elasticity}
+
+当变量具有不同量纲时，绝对导数 $\partial y/\partial x$ 会随计量单位改变. 对数弹性刻画相对变化之间的局部比例关系，因此是无量纲的边际量. 
+
+\begin{definition}[局部对数弹性]\label{def:background-elasticity}
+设 $y=y(x_1,\ldots,x_m)>0$ 可微，且 $x_i>0$. 定义 $y$ 对 $x_i$ 的局部对数弹性为
+\begin{equation}\label{eq:bg-elasticity}
+\varepsilon_{y,x_i}
+:=\frac{\partial\ln y}{\partial\ln x_i}
+=\frac{x_i}{y}\frac{\partial y}{\partial x_i},
+\end{equation}
+其中其余变量保持不变. 若相对变化很小，则一阶 Taylor 近似给出
+\[
+\frac{\Delta y}{y}\approx
+\sum_{i=1}^{m}\varepsilon_{y,x_i}\frac{\Delta x_i}{x_i}.
+\]
+\end{definition}
+
+\begin{proposition}[乘积幂律的对数微分]\label{prop:bg-log-monomial}
+若
+\[
+y=a\prod_{i=1}^{m}x_i^{b_i},\quad a>0,\ x_i>0,
+\]
+则
+\begin{equation}\label{eq:bg-log-monomial}
+\dd\ln y=\sum_{i=1}^{m}b_i\,\dd\ln x_i,
+\quad
+\varepsilon_{y,x_i}=b_i.
+\end{equation}
+\end{proposition}
+
+
+命题~\ref{prop:bg-log-monomial} 表明，幂律在对数坐标中转化为线性关系，幂指数直接成为局部弹性. 若目标函数由若干幂项相加构成，则总目标的弹性取决于各项在当前状态下的相对大小. 
+
+
+\begin{definition}[渐近等价]\label{def:bg-asymptotic}
+设 $f(c),g(c)>0$. 若
+\[
+\lim_{c\to\infty}\frac{f(c)}{g(c)}=1,
+\]
+则称 $f$ 与 $g$ 在 $c\to\infty$ 时渐近等价，记作 $f(c)\sim g(c)$. 
+\end{definition}
+
+\paragraph{渐近等价的运算规则. \quad}
+若 $f\sim g$、$u\sim v$ 且各函数最终为正，则对任意固定实数 $r$，
+\begin{equation}\label{eq:bg-asymptotic-rules}
+f^r\sim g^r,\quad fu\sim gv,\quad \frac{f}{u}\sim\frac{g}{v}.
+\end{equation}
+这些关系直接来自极限的乘积、商与连续幂运算，例如
+$(f/g)^r\to1$、$(f/g)(u/v)\to1$. 
+
+
+\subsection{约束优化、凸分析与预算灵敏度}\label{sec:bg-optimization}
+
+KKT 条件是不等式约束下拉格朗日乘子法的一阶推广. 在满足适当正则条件的局部最优点，目标函数的负梯度可表示为活动约束法向量的非负线性组合. 
+
+
+\begin{lemma}[简单根的隐函数形式]\label{thm:bg-implicit-simple-root}
+设 $F(x,q)$ 在 $(x_0,q_0)$ 附近连续可微，满足
+\[
+F(x_0,q_0)=0,\quad \frac{\partial F}{\partial x}(x_0,q_0)\neq0.
+\]
+则在 $q_0$ 的某个邻域内，方程 $F(x,q)=0$ 唯一确定一个连续可微函数 $x=x^\star(q)$，且\cite{bonnans}
+\begin{equation}\label{eq:bg-implicit-derivative}
+\frac{\dd x^\star}{\dd q}
+=-\frac{F_q(x^\star(q),q)}{F_x(x^\star(q),q)}.
+\end{equation}
+\end{lemma}
+
+\begin{proposition}[剖面函数的一阶导数]\label{prop:bg-profile-derivative}
+设 $f(x,q)$ 连续可微，$x^\star(q)$ 是可微的内点驻点分支，即
+\[
+\frac{\partial f}{\partial x}(x^\star(q),q)=0.
+\]
+定义剖面函数 $\bar f(q):=f(x^\star(q),q)$，则
+\begin{equation}\label{eq:bg-profile-derivative}
+\frac{\dd\bar f}{\dd q}
+=\frac{\partial f}{\partial q}(x^\star(q),q).
+\end{equation}
+\end{proposition}
+
+
+\begin{definition}[活动约束、Lagrangian 与 LICQ]\label{def:bg-kkt-objects}
+考虑
+\begin{equation}\label{eq:bg-general-nlp}
+\min_{\mathbf x\in\mathbb R^m} f(\mathbf x),
+\quad g_j(\mathbf x)\le0,\quad j=1,\ldots,q.
+\end{equation}
+在可行点 $\mathbf x$，定义活动集
+\[
+\mathcal A(\mathbf x):=\{j:g_j(\mathbf x)=0\}.
+\]
+给定乘子 $\lambda_j\ge0$，Lagrangian 定义为
+\[
+\mathscr L(\mathbf x,\boldsymbol\lambda)
+:=f(\mathbf x)+\sum_{j=1}^{q}\lambda_jg_j(\mathbf x).
+\]
+若活动约束的梯度集合
+$\{\nabla g_j(\mathbf x):j\in\mathcal A(\mathbf x)\}$
+线性无关，则称在 $\mathbf x$ 满足线性无关约束资格（LICQ）. 
+\end{definition}
+
+\begin{theorem}[KKT 一阶必要条件]\label{thm:bg-kkt}
+设 $f,g_1,\ldots,g_q$ 在局部最优点 $\mathbf x^\star$ 附近连续可微，并且 $\mathbf x^\star$ 满足 LICQ. 则存在乘子 $\lambda_j^\star\ge0$，使
+\begin{align}
+\nabla f(\mathbf x^\star)+\sum_{j=1}^{q}\lambda_j^\star\nabla g_j(\mathbf x^\star)&=0,\label{eq:bg-kkt-stationarity}\\
+g_j(\mathbf x^\star)&\le0,\label{eq:bg-kkt-primal}\\
+\lambda_j^\star g_j(\mathbf x^\star)&=0.\label{eq:bg-kkt-complementary}
+\end{align}
+式~\eqref{eq:bg-kkt-stationarity}、\eqref{eq:bg-kkt-primal} 与~\eqref{eq:bg-kkt-complementary} 分别称为驻点条件、原始可行性与互补松弛\cite{boyd,bonnans}. 
+\end{theorem}
+
+\begin{remark}
+若问题为凸优化，并满足适当的严格可行条件，则 KKT 条件也可成为全局最优的充分条件\cite{boyd}. 对于一般非凸问题，KKT 条件仅提供局部最优点的必要条件，不能保证全局最优. 
+\end{remark}
+
+\begin{definition}[参数化最优值函数]\label{def:background-value}
+若预算参数 $c$ 进入约束 $G(\mathbf x)\le c$，定义
+\[
+V(c):=\inf\{f(\mathbf x):G(\mathbf x)\le c,\ \mathbf x\text{ 满足其余约束}\}.
+\]
+\end{definition}
+
+\begin{proposition}[活动预算约束的局部灵敏度]\label{thm:bg-envelope}
+设在某个预算 $c$ 的邻域内存在唯一且可微的最优分支 $\mathbf x^\star(c)$，活动约束集合保持不变，且 KKT 条件成立. 若预算约束 $G(\mathbf x)\le c$ 在该分支上活动，其 KKT 乘子为 $\mu^\star(c)$，则
+\begin{equation}\label{eq:bg-shadow-price}
+V'(c)=-\mu^\star(c).
+\end{equation}
+因此 $\mu^\star$ 表示增加一单位预算所带来的最优目标值的一阶下降量，即预算的影子价格. 
+\end{proposition}
+
+
+\paragraph{局部最优与灵敏度. \quad}
+KKT 条件描述活动约束下的一阶平衡关系；最优值灵敏度公式描述约束右端参数变化时最优目标值的一阶响应. 两者均为局部性质，在非凸问题中不能替代不同可行分支之间的全局目标值比较. 
+
+
+\paragraph{凸性、次梯度与多面体约束. \quad}
+下面的凸分析工具用于第三问的唯一尺度与稳健内层，也用于第四问把连续形状约束化为有限顶点约束. 
+
+\begin{definition}[严格凸性、强制性与次梯度]\label{def:bg-convex-v26}
+在凸集 $D$ 上，若任意不同 $x,y\in D$ 及 $0<t<1$ 均有
+$f(tx+(1-t)y)<tf(x)+(1-t)f(y)$，则称 $f$ 严格凸；把小于改为不大于即为凸性. 对 $f:\mathbb R\to\mathbb R$，若 $|x|\to\infty$ 时 $f(x)\to\infty$，称其强制. 凸函数在 $x_0$ 的次梯度 $v$ 满足
+\[
+f(x)\ge f(x_0)+v(x-x_0)\quad\text{对所有 }x;
+\]
+所有这类 $v$ 组成次微分 $\partial f(x_0)$. 可微时次梯度唯一，等于 $f'(x_0)$. 
+\end{definition}
+
+\begin{proposition}[唯一极小点、有限最大值与支撑下界]\label{prop:bg-convex-minimum-v26}
+连续、严格凸且强制的实函数有唯一全局极小点，其充要最优条件为 $0\in\partial f(x^*)$. 有限个严格凸且强制的实函数 $f_1,\ldots,f_m$ 的最大值 $F=\max_jf_j$ 仍严格凸且强制；若各 $f_j$ 可微，则
+\[
+\partial F(x)=\operatorname{conv}\{f_j'(x):f_j(x)=F(x)\}.
+\]
+对任意凸函数，已知 $x_-, x_+$ 两处的次梯度 $v_-\le0\le v_+$，则极小点可在两点之间寻找，且两条支撑线最大值在该区间的下界为函数极小值的下界. 
+\end{proposition}
+
+
+\begin{definition}[凸包与顶点表示]\label{def:bg-polytope-v26}
+有限点集 $v_1,\ldots,v_m$ 的凸包为
+$\operatorname{conv}\{v_j\}:=\{\sum_j\omega_jv_j:\omega_j\ge0,\sum_j\omega_j=1\}$. 
+有限点集的凸包称为多胞形；二维矩形恰为其四个顶点的凸包. 
+\end{definition}
+\begin{proposition}[仿射不等式的顶点检验]\label{prop:bg-affine-vertices-v26}
+若 $a(x)=b+\boldsymbol w^\top x$，且 $a(v_j)\ge0$ 对所有顶点成立，则在其凸包内处处 $a(x)\ge0$. 
+\end{proposition}
+
+
+\paragraph{仿射下包络与全局比较. \quad}
+局部驻点描述一条分支的变化；比较不同分支随预算的选择，还需要利用目标对参数的整体结构. 下面的下包络性质把这一步转化为可比较的直线族. 
+\begin{definition}[仿射族的下包络]\label{def:bg-affine-envelope-v37}
+设 $\mathcal I$ 为紧集，$a,b:\mathcal I\to\mathbb R$ 连续. 仿射族 $a(q)x+b(q)$ 的下包络定义为
+\[
+\mathscr H(x):=\min_{q\in\mathcal I}\{a(q)x+b(q)\}.
+\]
+在给定 $x$ 达到最小值的 $q$ 称为最小化指标. 
+\end{definition}
+\begin{proposition}[下包络的凹性与单调性]\label{prop:bg-affine-envelope-v37}
+上述 $\mathscr H$ 连续且凹. 若 $a_{\min}:=\min_{q\in\mathcal I}a(q)>0$，则对 $x_2>x_1$，
+\[
+\mathscr H(x_2)-\mathscr H(x_1)\ge a_{\min}(x_2-x_1)>0.
+\]
+\end{proposition}
+
+第三问以质量为指标构造上述直线族，再用两个预算下的最优性不等式证明全局单调性. 这是单调比较静态的题目专属形式\cite{milgrom_shannon}，无需假定完整资源问题联合凸. 
+
+\subsection{条件分位数、Pinball 损失与有限样本秩}\label{sec:bg-quantile}
+
+当研究对象是分布的上沿而非均值时，固定分位水平的条件分位数比样本最大值具有更稳定的统计含义. 样本最大值会随样本量变化，而条件分位数由条件分布本身决定，并可通过条件期望 Pinball 损失的最小化来刻画. 
+
+\begin{definition}[条件分布函数与条件分位数]\label{def:background-quantile}
+设随机变量 $S$ 表示能力分数，$X$ 表示条件变量. 定义条件分布函数
+\[
+F_{S\mid X}(s\mid x):=\Prob(S\le s\mid X=x).
+\]
+对 $\tau\in(0,1)$，定义条件 $\tau$ 分位数为广义逆
+\begin{equation}\label{eq:background-quantile}
+q_\tau(x):=F^{-1}_{S\mid X}(\tau\mid x)
+:=\inf\{s:F_{S\mid X}(s\mid x)\ge\tau\}.
+\end{equation}
+并记左极限
+$F_{S\mid X}(a^-\mid x):=\lim_{t\to a^-}F_{S\mid X}(t\mid x)$. 
+\end{definition}
+
+
+\paragraph{分位数的单调性. \quad}
+对固定条件 $x$，若 $0<\tau_1<\tau_2<1$，则
+\[
+q_{\tau_1}(x)\le q_{\tau_2}(x).
+\]
+因为满足 $F_{S\mid X}(s\mid x)\ge\tau_2$ 的点必然也满足
+$F_{S\mid X}(s\mid x)\ge\tau_1$，较高分位水平对应集合包含于较低分位水平对应集合；取下确界即得上述顺序. 经验分布的经验分位数满足同样的单调性. 
+
+
+\paragraph{样本最大值与样本量. \quad}
+设 $S_1,\ldots,S_m$ 独立同分布，公共分布函数为 $F$，并令
+$M_m:=\max_{1\le i\le m}S_i$. 则
+\begin{equation}\label{eq:bg-sample-maximum}
+\Prob(M_m\le s)
+=\Prob(S_1\le s,\ldots,S_m\le s)
+=F(s)^m.
+\end{equation}
+若 $0<F(s)<1$，该概率随 $m$ 增大而减小，因此样本最大值的分布显式依赖样本量. 
+
+
+\begin{definition}[Pinball 损失]\label{def:bg-pinball}
+对预测误差 $e=S-a$，定义
+\begin{equation}\label{eq:q4-pinball-v13}
+\rho_\tau(e)
+:=e\{\tau-\mathbf 1_{\{e<0\}}\}
+=\begin{cases}
+\tau e,&e\ge0,\\
+(\tau-1)e,&e<0.
+\end{cases}
+\end{equation}
+当预测 $a$ 低于观测 $S$ 时，误差按权重 $\tau$ 计；当预测过高时，误差按权重 $1-\tau$ 计. 因此 $\tau>1/2$ 会更重地惩罚低估，适合估计上分位位置\cite{koenker,koenker_bassett,koenker_hallock}. 本文只使用 $0.05$、$0.85$、$0.95$ 三个内部分位水平，不涉及尾部外推；极值分位回归的渐近理论与本文的有序凸规划是不同的问题，可参见文献~\cite{chernozhukov_extreme}. 
+\end{definition}
+
+\begin{lemma}[Pinball 损失及其条件期望的凸性]\label{lem:bg-pinball-convex}
+固定观测 $s$，函数 $a\mapsto\rho_\tau(s-a)$ 为凸函数；因此条件期望损失（风险函数）
+\[
+R_x(a):=\E[\rho_\tau(S-a)\mid X=x]
+\]
+也是凸函数. 
+\end{lemma}
+
+\begin{proposition}[条件分位数的 Pinball 损失最小化表征]\label{thm:bg-pinball-quantile}
+假设 $\E[|S|\mid X=x]<\infty$，使 $R_x(a)$ 有限. 则 $R_x(a)$ 的极小点集合恰由满足
+\begin{equation}\label{eq:q4-quantile-subgradient-v13}
+F_{S\mid X}(a^-\mid x)\le\tau\le F_{S\mid X}(a\mid x)
+\end{equation}
+的 $a$ 构成. 若条件分布在该位置连续且严格递增，则极小点唯一，且
+\[
+a^\star=q_\tau(x)=F^{-1}_{S\mid X}(\tau\mid x).
+\]
+\end{proposition}
+
+\begin{corollary}[经验分位数最小化样本 Pinball 损失]\label{cor:bg-empirical-quantile}
+给定样本 $s_1,\ldots,s_n$，任一经验 $\tau$ 分位数都是
+\[
+\argmin_{a\in\mathbb R}\sum_{i=1}^{n}\rho_\tau(s_i-a)
+\]
+中的一个解. 
+\end{corollary}
+
+\begin{remark}
+平方损失的条件期望极小点是条件均值，而 Pinball 损失的条件期望极小点是条件分位数. 因此，均值回归回答“平均模型怎样变化”，高分位回归回答“分布上沿在哪里”，两者是不同统计目标，不能相互替代. 
+\end{remark}
+
+
+\paragraph{有限样本秩与可交换性. \quad}
+条件分位数描述总体的概率位置，而有限样本区间还需要把校准分数的排序转化为覆盖概率；这一步由可交换秩结论完成. 
+
+\begin{definition}[可交换性与次序统计量]\label{def:bg-exchangeable-v26}
+随机向量 $(R_1,\ldots,R_m)$ 若在任意有限指标置换后联合分布不变，则称可交换；它不要求各分量相互独立. 将样本从小到大排列后的第 $k$ 个值记为 $R_{(k)}$，称为第 $k$ 个次序统计量. 
+\end{definition}
+\begin{lemma}[可交换分数的保守秩界]\label{thm:bg-exchangeable-rank-v26}
+若 $R_1,\ldots,R_m,R_{\rm new}$ 可交换，则对 $1\le k\le m$，
+\[
+\Prob\{R_{\rm new}\le R_{(k)}\}\ge\frac{k}{m+1},
+\]
+其中右侧次序统计量仅由前 $m$ 个校准分数计算. 无并列值时等号成立；有并列值时该不等式保守. 
+\end{lemma}
+
+
+\paragraph{小结. \quad}
+方向导数、正交投影与秩判据处理约束方向和参数可识别性；概率单纯形与 Fisher--Rao 几何处理配比变量；对数弹性与渐近等价处理标度律和高预算尺度；隐函数、剖面导数、KKT、凸性、次梯度、仿射下包络与包络定理共同处理预算优化及全局比较；条件分位数、Pinball 损失与可交换秩则处理能力前沿及有限样本校准. 上述五组工具分别进入正文四问，正文只引用结论而不再重复建立通用数学结论. 
+
+表~\ref{tab:math-dependencies-v26} 汇总上述通用工具与各问直接结论的依赖关系. 
+\begin{table}[htbp]\centering\small
+\caption{通用数学背景到四问直接结论的依赖关系}\label{tab:math-dependencies-v26}
+\begin{tabular}{P{1.0cm}P{5.6cm}P{7.9cm}}\toprule
+问题 & 重点数学基础 & 本题直接结论及算法作用\\\midrule
+一 & 单纯形、Fisher--Rao 几何、部分识别与一致误差界 & 平方根响应面、质量识别集、配比选择后悔界；提供 $Q_0,\psi$ 及接口条件. \\
+二 & 秩与中心化、对数弹性、坐标变换、形状约束 & 共同质量响应的秩一必要条件、有限等价与坐标弹性变换；来源内分组拟合. \\
+三 & 严格凸性、仿射下包络、最优性比较、渐近等价 & 唯一尺度、全局预算单调、有限饱和充要条件、完备候选和条件渐近；风险内层凸性. \\
+四 & Pinball 损失的凸性、顶点约束、部分强凸性、顺序反馈与可交换秩 & 有序分位规划、斜率误差界、凸组合和累计后悔；带前提的校准与训练算力匹配. \\\bottomrule
+
+\end{tabular}\end{table}
+\resetappendixfloats
